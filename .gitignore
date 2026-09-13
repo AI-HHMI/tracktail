@@ -183,7 +183,7 @@ _deprecated/
 .pixi/*
 pixi-py/*
 !.pixi/config.toml
-pixi.lock
+# pixi.lock is tracked: it pins the solved environment for reproducible clones
 
 .aider*
 
