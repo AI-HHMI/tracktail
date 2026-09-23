@@ -41,7 +41,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 
 from lightning.fabric import Fabric
 
-from posetail.datasets.posetail_dataset import PosetailDataset, custom_collate, validation_collate
+from posetail.datasets.posetail_dataset import PosetailDataset, StepDistributedSampler, custom_collate, validation_collate
 from posetail.posetail.losses import *
 from posetail.posetail.tracker import Tracker
 from posetail.posetail.tracker_encoder import TrackerEncoder
@@ -130,7 +130,7 @@ def run(config_path, fabric):
     # set up training dataloader
     train_dataset = PosetailDataset(config, split = 'train')
 
-    sampler = DistributedSampler(
+    sampler = StepDistributedSampler(
         train_dataset,
         num_replicas = fabric.world_size, 
         rank = fabric.global_rank,

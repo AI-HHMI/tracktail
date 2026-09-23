@@ -3,7 +3,7 @@ import cv2
 import json
 
 import torch 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DistributedSampler
 
 import numpy as np
 import pandas as pd 
@@ -536,6 +536,19 @@ def custom_collate(batch):
     return batch
 
 
+class StepDistributedSampler(DistributedSampler):
+    """DistributedSampler yielding ((seed, step), index).
+
+    `step` is the same on every rank, so PosetailDataset draws the per-step camera count
+    and 2D-only coin from it: a DDP step waits for the slowest rank, and matching those
+    draws keeps ranks similarly expensive. Everything else stays independent per rank.
+    """
+    def __iter__(self):
+        base = self.epoch * self.num_samples
+        for k, idx in enumerate(super().__iter__()):
+            yield (self.seed, base + k), idx
+
+
 def validation_collate(batch):
     """Collate valid validation samples; preserve exhausted-sample sentinel for test_epoch."""
     if any(sample is None for sample in batch):
@@ -740,8 +753,20 @@ class PosetailDataset(Dataset):
     # after this many rejections from one dataset in a single call, draw from
     # other datasets instead, so a heavily filtered dataset can't starve the call
     GETITEM_SAME_DATASET_RETRIES = 20
+    _shared_draws = None  # set per item from StepDistributedSampler's step key
 
     def __getitem__(self, idx):
+        self._shared_draws = None
+        if isinstance(idx, tuple):
+            # (seed, step) key shared across ranks: draw cost-determining choices once,
+            # before retries, so every rank's item for this step matches them
+            key, idx = idx
+            rng = np.random.default_rng(key)
+            cams = self.cams_to_sample
+            self._shared_draws = {
+                'n_cams': (int(rng.integers(cams[0], cams[1] + 1))
+                           if isinstance(cams, (list, tuple)) else cams),
+                'coin_2d': float(rng.random())}
         # The retry loop is LOCAL to this call: we track tried indices in a
         # per-call `tried` set instead of mutating the persistent `good_index`.
         # get_item_actual returns None for *stochastic* reasons (random camera
@@ -988,7 +1013,9 @@ class PosetailDataset(Dataset):
 
         # ── 3D path (original logic) ──────────────────────────────────────────
         else:
-            is_2d_mode = self.prob_2d_only > 0 and np.random.random() < self.prob_2d_only
+            coin = (self._shared_draws['coin_2d'] if self._shared_draws
+                    else np.random.random())
+            is_2d_mode = self.prob_2d_only > 0 and coin < self.prob_2d_only
 
             if is_2d_mode:
                 # Force sample 1 camera
@@ -1362,7 +1389,9 @@ class PosetailDataset(Dataset):
     def sample_cameras(self, coords, vis, vis_2d, cam_names): 
 
         # sample a number of camera views from a set of calibrated cameras
-        if isinstance(self.cams_to_sample, int): 
+        if self._shared_draws:
+            num_cams_to_sample = self._shared_draws['n_cams']
+        elif isinstance(self.cams_to_sample, int): 
             num_cams_to_sample = self.cams_to_sample
         else: # sample between a high and low bound
             num_cams_to_sample = np.random.randint(self.cams_to_sample[0], self.cams_to_sample[1] + 1)
