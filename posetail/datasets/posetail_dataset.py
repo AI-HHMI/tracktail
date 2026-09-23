@@ -506,6 +506,13 @@ def custom_collate(batch):
     return batch
 
 
+def validation_collate(batch):
+    """Collate valid validation samples; preserve exhausted-sample sentinel for test_epoch."""
+    if any(sample is None for sample in batch):
+        return None
+    return custom_collate(batch)
+
+
 class PosetailDataset(Dataset): 
 
     def __init__(self, config, split): 
@@ -644,6 +651,8 @@ class PosetailDataset(Dataset):
         
         # generate metadata for the provided data path (requires a specific format)
         self.metadata = self._generate_metadata()
+        if split == 'val':
+            self._drop_empty_validation_datasets()
 
         # self.metadata[['scale_dict', 'res_dict', 'new_res_dict']] = self.metadata.apply(
         #     self._get_scale, axis = 1, result_type = 'expand')
@@ -661,6 +670,34 @@ class PosetailDataset(Dataset):
         self.dataset_indices = self.metadata.groupby('dataset').indices
         # self.metadata_path = os.path.join(data_path, 'posetail_metadata.csv')
         # self.metadata.to_csv(self.metadata_path, index = False)
+
+
+    def _drop_empty_validation_datasets(self):
+        """Exclude val datasets with no sample accepted by the normal data path."""
+        if self.metadata.empty:
+            raise RuntimeError(f"No validation samples found under {self.data_path!r}")
+
+        keep = []
+        for dataset, rows in self.metadata.groupby('dataset', sort=False):
+            valid = False
+            last_error = None
+            for idx in rows.index:
+                try:
+                    if self.get_item_actual(int(idx)) is not None:
+                        valid = True
+                        break
+                except Exception as exc:
+                    # Treat unreadable/corrupt rows as invalid during this val-only probe.
+                    last_error = f"{type(exc).__name__}: {exc}"
+            if valid:
+                keep.append(dataset)
+            else:
+                detail = f"; last error: {last_error}" if last_error else ""
+                print(f"[val] excluding dataset {dataset!r}: no valid samples among {len(rows)} rows{detail}")
+
+        if not keep:
+            raise RuntimeError("No validation dataset contains a valid sample")
+        self.metadata = self.metadata[self.metadata['dataset'].isin(keep)].reset_index(drop=True)
 
 
     def __len__(self): 

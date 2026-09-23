@@ -1117,6 +1117,7 @@ def test_epoch(config, model, dataloader, loss = None,
     timestamp = get_timestamp()
 
     n_batches = 0
+    skipped_batches = 0
     n_frames = 0
     metric_dicts = []
     metric_datasets = []  # dataset name per entry in metric_dicts (batch_size=1)
@@ -1127,6 +1128,9 @@ def test_epoch(config, model, dataloader, loss = None,
 
         if j == config.training.debug_ix: 
             break
+        if batch is None:
+            skipped_batches += 1
+            continue
     
         views = [view.to(device) for view in batch.views]
         coords = batch.coords.to(device)
@@ -1235,6 +1239,7 @@ def test_epoch(config, model, dataloader, loss = None,
                 f'{prefix}elapsed_time': elapsed_time,
                 f'{prefix}elapsed_time_hms': elapsed_time_hms,
                 f'{prefix}batches_per_epoch': n_batches,
+                f'{prefix}skipped_batches': skipped_batches,
                 f'{prefix}frames_per_epoch': n_frames}
 
     if loss is not None:

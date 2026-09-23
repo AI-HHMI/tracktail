@@ -41,7 +41,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 
 from lightning.fabric import Fabric
 
-from posetail.datasets.posetail_dataset import PosetailDataset, custom_collate
+from posetail.datasets.posetail_dataset import PosetailDataset, custom_collate, validation_collate
 from posetail.posetail.losses import *
 from posetail.posetail.tracker import Tracker
 from posetail.posetail.tracker_encoder import TrackerEncoder
@@ -171,7 +171,7 @@ def run(config_path, fabric):
         val_loader = DataLoader(
             val_dataset,
             batch_size = config.dataset.batch_size,
-            collate_fn = custom_collate,
+            collate_fn = validation_collate,
             shuffle = True,
             num_workers = config.dataset.num_workers,
             prefetch_factor=2,
