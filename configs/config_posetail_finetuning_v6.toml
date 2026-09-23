@@ -42,7 +42,7 @@ intensity_floor = 0.0
 
 [dataset.val]
 split_dir = 'val'
-n_samples_per_dataset = 40
+n_samples_per_dataset = 2
 n_frames = 24
 max_res = 256
 cams_to_sample = 5
