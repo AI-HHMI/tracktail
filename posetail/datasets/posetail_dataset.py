@@ -327,6 +327,31 @@ def _vis_2d_bounds(coords, size):
     return finite & in_x & in_y
 
 
+def track_motion(p2d):
+    """Per-keypoint pixel motion that bridges missing frames.
+
+    Each step is measured from the most recent labeled frame, so sparsely labeled
+    tracks (e.g. labeled every 5th frame) aren't counted as motionless. Identical to
+    plain frame-to-frame diffs when a track is fully labeled.
+
+    Args:
+        p2d: (cams, T, N, 2) pixel coords, NaN where missing
+    Returns:
+        total_movement, avg_speed: (N,) each, averaged over cameras
+    """
+    valid = torch.isfinite(p2d).all(dim=-1)                      # (cams, T, N)
+    last = torch.full_like(p2d[:, 0], float('nan'))              # last labeled position
+    steps = []
+    for t in range(p2d.shape[1]):
+        if t > 0:
+            steps.append(torch.linalg.norm(p2d[:, t] - last, dim=-1))
+        last = torch.where(valid[:, t, :, None], p2d[:, t], last)
+    movement = torch.nan_to_num(torch.stack(steps, dim=1), 0.0)  # (cams, T-1, N)
+    total_movement = torch.mean(torch.sum(movement, dim=1), dim=0)
+    avg_speed = torch.mean(torch.mean(movement, dim=1), dim=0)
+    return total_movement, avg_speed
+
+
 def get_start_ixs(coords, n_frames, split):
 
     if split == 'train': 
@@ -447,6 +472,11 @@ def custom_collate(batch):
         f'custom_collate keeps only item 0\'s camera group, so batch_size must be 1 '
         f'(got {len(batch)}). Every other item would be projected through the wrong rig. '
         f'Use gradient accumulation, or collate cgroup as a list and have the model iterate.')
+
+    if any(sample is None for sample in batch):
+        raise RuntimeError(
+            'PosetailDataset returned no valid sample after exhausting its retries; '
+            'see the "[data]" warnings above for which datasets are being rejected.')
 
     batch = list(zip(*batch))
 
@@ -707,6 +737,9 @@ class PosetailDataset(Dataset):
     # max distinct samples to try within a single __getitem__ call before
     # giving up and returning None (only hit if a dataset is genuinely empty)
     GETITEM_MAX_RETRIES = 200
+    # after this many rejections from one dataset in a single call, draw from
+    # other datasets instead, so a heavily filtered dataset can't starve the call
+    GETITEM_SAME_DATASET_RETRIES = 20
 
     def __getitem__(self, idx):
         # The retry loop is LOCAL to this call: we track tried indices in a
@@ -719,6 +752,7 @@ class PosetailDataset(Dataset):
         # state for the whole run. So we only clear good_index on a genuine load
         # *exception* (corrupt/missing file); soft None rejections just retry.
         tried = set()
+        failures = {}  # dataset -> rejections in this call
         start = idx
         for _ in range(self.GETITEM_MAX_RETRIES):
             if self.good_index[start] and start not in tried:
@@ -732,17 +766,41 @@ class PosetailDataset(Dataset):
                     if np.sum(self.good_index) == 0:
                         return None  # no valid samples anywhere
             tried.add(start)
+            dataset = self.metadata['dataset'].values[start]
+            failures[dataset] = failures.get(dataset, 0) + 1
 
             # prefer another good, not-yet-tried sample from the SAME dataset
-            dataset = self.metadata['dataset'].values[start]
-            same = self.dataset_indices[dataset]
-            good_same = [int(i) for i in same[self.good_index[same]] if int(i) not in tried]
-            if len(good_same) > 0:
-                start = int(np.random.choice(good_same))
-            else:
-                # this dataset is exhausted for this call — fall back globally
+            if failures[dataset] < self.GETITEM_SAME_DATASET_RETRIES:
+                good_same = self._untried_good(dataset, tried)
+                if len(good_same) > 0:
+                    start = int(np.random.choice(good_same))
+                    continue
+
+            # this dataset keeps failing (or is exhausted): move to other datasets
+            self._warn_dataset_fallback(dataset, failures[dataset])
+            others = [d for d in self.dataset_indices
+                      if failures.get(d, 0) < self.GETITEM_SAME_DATASET_RETRIES]
+            if not others:
                 start = np.random.randint(len(self.metadata))
+                continue
+            sizes = np.array([len(self.dataset_indices[d]) for d in others], dtype=float)
+            other = others[np.random.choice(len(others), p=sizes / sizes.sum())]
+            good_other = self._untried_good(other, tried)
+            start = (int(np.random.choice(good_other)) if len(good_other) > 0
+                     else np.random.randint(len(self.metadata)))
         return None
+
+    def _untried_good(self, dataset, tried):
+        rows = self.dataset_indices[dataset]
+        return [int(i) for i in rows[self.good_index[rows]] if int(i) not in tried]
+
+    def _warn_dataset_fallback(self, dataset, n_failures):
+        # once per dataset per worker process, so the log shows what's being rejected
+        warned = self.__dict__.setdefault('_fallback_warned', set())
+        if dataset not in warned:
+            warned.add(dataset)
+            print(f"[data] {self.split}: {n_failures} rejected samples from {dataset!r} "
+                  f"in one item; drawing from other datasets instead")
 
         
     def _current_tilt(self):
@@ -863,11 +921,7 @@ class PosetailDataset(Dataset):
             # movement / speed (pixels already; no projection needed).
             # p2d_motion is (cams=1, t, n, 2) — same layout as the 3D path, so
             # diff over the time axis (dim=1), then aggregate over time / cams.
-            p2d_motion = coords[None]  # (1, t, n, 2)
-            movement = torch.linalg.norm(torch.diff(p2d_motion, dim=1), dim=-1)
-            movement = torch.nan_to_num(movement, 0.0)
-            total_movement = torch.mean(torch.sum(movement, dim=1), dim=0)  # (n,)
-            avg_speed = torch.mean(torch.mean(movement, dim=1), dim=0)      # (n,)
+            total_movement, avg_speed = track_motion(coords[None])  # (n,), (n,)
 
             good = total_movement >= 12
             if torch.sum(good) < 2:
@@ -1036,10 +1090,7 @@ class PosetailDataset(Dataset):
 
             # compute total movement and speed in pixels, averaged across cameras
             p2d_proj = project_points_torch(cgroup, coords)  # (cams, t, n_kpts, 2)
-            movement = torch.linalg.norm(torch.diff(p2d_proj, dim=1), dim=-1)
-            movement = torch.nan_to_num(movement, 0.0)
-            total_movement = torch.mean(torch.sum(movement, dim=1), dim=0)
-            avg_speed = torch.mean(torch.mean(movement, dim=1), dim=0)
+            total_movement, avg_speed = track_motion(p2d_proj)
 
             good = total_movement >= 12
             if torch.sum(good) < 2:
