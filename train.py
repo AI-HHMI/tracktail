@@ -361,8 +361,8 @@ def run(config_path, fabric):
 
         else: 
             checkpoint_dict = load_checkpoint(
-                config_path, checkpoint_path, model = model, 
-                optimizer = optimizer, device = 'cpu')
+                config_path, checkpoint_path, model = model,
+                optimizer = optimizer, device = fabric.device)
             
             model = checkpoint_dict['model']
             optimizer = checkpoint_dict['optimizer']
