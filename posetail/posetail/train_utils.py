@@ -817,15 +817,23 @@ def train_iteration(config, model, fabric, batch,
     coords_pred = outputs['coords_pred']
     vis_pred = outputs['vis_pred']
 
-    total_loss = loss(
-        model = model, 
-        outputs = outputs,
-        coords_true = coords, 
-        vis_true = vis,
-        vis_true_cams = vis_2d,
-        cgroup = cgroup, 
-        p2d = p2d, 
-        device = coords_pred.device)
+    try:
+        total_loss = loss(
+            model = model, 
+            outputs = outputs,
+            coords_true = coords, 
+            vis_true = vis,
+            vis_true_cams = vis_2d,
+            cgroup = cgroup, 
+            p2d = p2d, 
+            device = coords_pred.device)
+    except ValueError as e:
+        # Non-finite loss on THIS rank only. Raising here leaves the other DDP ranks blocked in
+        # the gradient all-reduce until the 30-min NCCL watchdog kills the job, so instead
+        # backprop an all-zero loss (keeps every rank's collectives in step) and skip the sample.
+        print(f"[rank {fabric.global_rank}] skipping non-finite batch {batch.sample_info}: {e}")
+        total_loss = sum(p.sum() for p in model.parameters() if p.requires_grad) * 0.0
+        evaluate = False
 
     fabric.backward(total_loss)
 

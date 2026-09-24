@@ -1143,18 +1143,28 @@ class PosetailDataset(Dataset):
 
             cgroup, coords = self.rotate_camera_group(cgroup, coords)
 
+            # (time, n_kpts): visible in >=1 FINAL (cropped/resized/rotated) camera. Datasets
+            # without vis annotations otherwise pick query frames by finiteness alone, and a
+            # sample whose query points are all out of view gets a NaN cube_scale -> NaN model.
+            cam_vis = torch.stack([is_point_visible(cam, coords) for cam in cgroup]).any(0)
+
             if self.query_anytime:
                 query_times = []
                 for kpt_idx in range(coords.shape[1]):
                     good = torch.isfinite(coords[:, kpt_idx, 0])
                     if vis is not None:
                         good = good & vis[:, kpt_idx]
+                    elif (good & cam_vis[:, kpt_idx]).any():
+                        good = good & cam_vis[:, kpt_idx]
                     valid_times = torch.where(good)[0]
                     query_time = self.sample_query_time(valid_times, n_frames)
                     query_times.append(query_time.item())
                 query_times = torch.tensor(query_times, dtype=torch.int32, device='cpu')
             else:
                 query_times = torch.zeros((coords.shape[1],), dtype=torch.int32, device='cpu')
+
+            if not cam_vis[query_times.long(), torch.arange(coords.shape[1])].any():
+                return None  # no query point in view of any camera -> cube_scale would be NaN
 
             if is_2d_mode:
                 p2d = project_points_torch(cgroup, coords)  # (1, t, n_kpts, 2)
