@@ -156,7 +156,7 @@ depth_log_max = 2.5
 seed = 0
 
 finetune = false
-checkpoint_path = '/groups/karashchuk/home/karashchukl/results/posetail-finetuning-v6/wandb/run-20260923_214704-8y57qjo4/files/checkpoints/checkpoint_00061441.pth'
+checkpoint_path = '/groups/karashchuk/home/karashchukl/results/posetail-finetuning-v6/wandb/run-20260924_100823-v3yhgr56/files/checkpoints/checkpoint_00512002.pth'
 
 n_iterations = 8000000
 scheduler_type = 'muon'
