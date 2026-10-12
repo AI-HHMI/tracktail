@@ -37,6 +37,34 @@ from posetail.posetail.train_utils import load_checkpoint, load_config, _warn_un
 _gpu_lock = asyncio.Lock()
 DEFAULT_HF_REPO = 'ai-hhmi/posetail-static-animal'
 
+# Training-only outputs of grid/gridresid/gridnorm models: '2d_logits' is the raw
+# (cams, b, t, n, 2P) bin-logit tensor (large, and only consumed by the CE loss) and
+# 'grid' is a nested dict of loss geometry that np.savez would pickle into an object
+# array the client cannot np.load without allow_pickle=True.
+_TRAINING_ONLY_OUTPUT_KEYS = frozenset({'2d_logits', 'grid'})
+
+
+def _outputs_to_numpy(outputs: dict) -> dict:
+    """Convert model outputs to plain numeric numpy arrays for an .npz response.
+
+    Drops training-only keys, None values, and anything that is not array-like (e.g.
+    nested dicts), so every entry loads with the default np.load(allow_pickle=False).
+    """
+    result = {}
+    for key, val in outputs.items():
+        if val is None or key in _TRAINING_ONLY_OUTPUT_KEYS:
+            continue
+        if isinstance(val, torch.Tensor):
+            arr = val.detach().cpu().numpy()
+        elif isinstance(val, (dict, list, tuple, str)):
+            continue
+        else:
+            arr = np.asarray(val)
+        if arr.dtype == object:
+            continue
+        result[key] = arr
+    return result
+
 
 def load_scorer_model(*, wandb=None, config=None, checkpoint=None,
                       checkpoint_number=None, device=None):
@@ -359,13 +387,7 @@ async def predict(
         scale_t = torch.tensor(scales, device=device).view(-1, 1, 1, 1, 1)
         outputs['2d_pred'] = outputs['2d_pred'] / scale_t
 
-    result = {}
-    for key, val in outputs.items():
-        if val is None:
-            continue
-        result[key] = val.cpu().numpy() if isinstance(val, torch.Tensor) else np.asarray(val)
-
-    return _npz_response(result, 'predictions.npz')
+    return _npz_response(_outputs_to_numpy(outputs), 'predictions.npz')
 
 
 @app.post('/score')
