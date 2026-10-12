@@ -1,1 +1,3 @@
-# posetail
+# tracktail
+
+readme still in progress
