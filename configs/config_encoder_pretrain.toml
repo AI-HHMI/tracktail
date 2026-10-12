@@ -1,5 +1,5 @@
 [wandb]
-project_name = 'posetail-pretraining-v3'
+project_name = 'posetail-pretraining-v5'
 path = '/groups/karashchuk/home/karashchukl/results/posetail-pretraining-v3'
 mode = 'online' # 'online', 'offline', 'disabled'
 
@@ -7,7 +7,7 @@ mode = 'online' # 'online', 'offline', 'disabled'
 # batch_size=1 REQUIRED for mixed 2D+3D (2D loss assumes B=cams=1). Multi-GPU: --strategy ddp.
 batch_size = 1
 num_workers = 12
-prefix = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v3'
+prefix = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v5-test'
 
 [dataset.train]
 split_dir = 'train'
