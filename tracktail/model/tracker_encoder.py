@@ -42,7 +42,7 @@ class TrackerEncoder(nn.Module):
 
         The packaged checkpoint contains the inference weights under ``model_state`` and
         the constructor arguments under ``model_config``.  ``revision`` may be a branch,
-        commit, or date tag such as ``"2026-08-24"``.
+        commit, or date tag such as ``"2026-10-12"``.
 
         Args:
             repo_id: Hugging Face model repository, e.g. ``"ai-hhmi/tracktail-static"``.

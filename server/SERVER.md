@@ -16,7 +16,7 @@ Other model sources are supported:
 
 ```bash
 # A different Hugging Face model or a dated release
-python server/server.py --hf-repo ai-hhmi/tracktail-static --revision 2026-08-24
+python server/server.py --hf-repo ai-hhmi/tracktail-static --revision 2026-10-12
 
 # From a wandb run directory (same as --base-folder in inference_video.py)
 python server/server.py --wandb /path/to/wandb/run-YYYYMMDD_HHMMSS-XXXXXXXX

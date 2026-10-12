@@ -6,7 +6,7 @@ Start with the default Hugging Face model, a Hugging Face repository, a wandb ru
 directory, or explicit config/checkpoint paths:
 
     python server/server.py
-    python server/server.py --hf-repo ai-hhmi/tracktail-static --revision 2026-08-24
+    python server/server.py --hf-repo ai-hhmi/tracktail-static --revision 2026-10-12
     python server/server.py --wandb /path/to/wandb/run-YYYYMMDD_HHMMSS-XXXXXXXX
     python server/server.py --config files/config.toml --checkpoint files/checkpoints/checkpoint_00010000.pth
 """

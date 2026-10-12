@@ -637,7 +637,7 @@ def load_model_from_hub(repo_id, device=None, revision=None, cache_dir=None):
     Args:
         repo_id: Hugging Face repository ID, such as ``ai-hhmi/tracktail-static``.
         device: Device for the model. Defaults to CUDA when available.
-        revision: Hub branch, commit, or date tag such as ``2026-08-24``.
+        revision: Hub branch, commit, or date tag such as ``2026-10-12``.
         cache_dir: Optional Hugging Face cache directory.
     """
     model = TrackerEncoder.from_pretrained(
