@@ -45,30 +45,185 @@ import numpy as np
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from posetail.inference.inference_utils import load_model_from_base_folder, run_inference   # noqa: E402
-from posetail.posetail.eval_metrics import get_eval_metrics              # noqa: E402
+from posetail.inference.inference_utils import (                         # noqa: E402
+    load_model_from_base_folder, run_inference, load_camera_group_from_metadata)
+from posetail.posetail.eval_metrics import (                             # noqa: E402
+    get_eval_metrics,
+    compute_cam_depths,
+    get_delta_x_avg_depth_relative,
+    get_mte_cam,
+    get_survival_rate_depth_relative,
+    get_average_jaccard_depth_relative,
+    get_delta_x_avg_world_coord,
+    get_mte_world_coord,
+    get_survival_rate_world_coord,
+    get_average_jaccard_world_coord,
+    get_l1_world_coord,
+    get_delta_x_avg_pertraj,
+    get_occlusion_accuracy_pertraj,
+)
 
 DEFAULT_WANDB = '/groups/karashchuk/home/karashchukl/results/posetail-finetuning-v3/wandb/run-20260628_134003-39yczenk'
-ROOT = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-finetuning-v3'
+DEFAULT_ROOT = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v5-test'
 
-# per-dataset run + scoring settings. thresholds/survival are the mvtracker evaluator_3dpt
-# settings; n_views/max_kpts are the inference caps (cmupanoptic_3dgs is dense + many-camera).
+# TAP-Vid default thresholds (δavg over {1,2,4,8,16}) used for any dataset not listed below.
+DEFAULT_SETTINGS = dict(thresholds=[1, 2, 4, 8, 16], survival=50, n_views=None, max_kpts=2500)
+
+# per-dataset overrides. thresholds/survival are dataset-specific world-unit scales;
+# n_views/max_kpts cap inference (cmupanoptic_3dgs is dense + many-camera).
 SETTINGS = {
     'dex_ycb':          dict(thresholds=[0.01, 0.02, 0.05, 0.10, 0.20], survival=0.10,
                              n_views=None, max_kpts=2500),
     'kubric-multiview': dict(thresholds=[0.05, 0.1, 0.2, 0.4, 0.8],     survival=0.50,
                              n_views=None, max_kpts=2500),
     'cmupanoptic_3dgs': dict(thresholds=[0.05, 0.10, 0.20, 0.40],       survival=1.0,
-                             n_views=14, max_kpts=600),
+                             n_views=4, max_kpts=600),
+    # TAPVid-3D fixed-metric thresholds: 1cm, 4cm, 16cm, 64cm, 256cm
+    # (supplemental paper values — 4× progression matching the depth-adaptive pixel thresholds).
+    # Depth-relative cam/world metrics are added separately via eval_outputs_cam.
+    'tapvid3d_adt':       dict(thresholds=[0.01, 0.04, 0.16, 0.64, 2.56], survival=0.50,
+                               n_views=None, max_kpts=2500),
+    'tapvid3d_drivetrack': dict(thresholds=[0.01, 0.04, 0.16, 0.64, 2.56], survival=0.50,
+                                n_views=None, max_kpts=2500),
+    'tapvid3d_pstudio':   dict(thresholds=[0.01, 0.04, 0.16, 0.64, 2.56], survival=0.50,
+                               n_views=None, max_kpts=2500),
 }
 METRIC_KEYS = ['mte', 'mpjpe', 'delta_x_avg', 'survival_rate', 'occlusion_acc',
-               'occlusion_acc_percam', 'avg_jaccard']
+               'occlusion_acc_percam', 'avg_jaccard', 'l1']
+
+# TAPVid-3D depth-relative metric config (cam-coord and world-coord).
+# Thresholds from the TAPVid-3D supplemental; a point passes when dist/Z_depth < threshold.
+# cam-coord: Z_depth = per-point per-frame Z_cam.
+# world-coord: Z_depth = per-trajectory mean Z_cam (D4RT addition; pstudio excluded).
+TAPVID3D_DATASETS      = {'tapvid3d_adt', 'tapvid3d_drivetrack', 'tapvid3d_pstudio'}
+TAPVID3D_WORLD_DATASETS = {'tapvid3d_adt', 'tapvid3d_drivetrack'}   # static cam excluded
+TAPVID3D_THRESHOLDS    = [0.01, 0.04, 0.16, 0.64, 2.56]
+TAPVID3D_SURVIVAL_DEPTH = 0.50                                        # 50% of depth
+METRIC_KEYS_CAM   = ['mte_cam',   'delta_x_avg_cam',   'survival_rate_cam',   'avg_jaccard_cam',   'occlusion_acc']
+METRIC_KEYS_WORLD = ['mte_world', 'delta_x_avg_world', 'survival_rate_world', 'avg_jaccard_world', 'l1_world']
+
+# TAPVid-2D per-trajectory metrics (matching MVTracker "Our Metrics" convention).
+# avg_jaccard is already per-trajectory in get_average_jaccard; listed here so the
+# pertraj table is complete and directly comparable to Table E.1 in MVTracker.
+TAPVID2D_DATASETS   = {'tapvid2d'}
+METRIC_KEYS_PERTRAJ = ['delta_x_avg_pertraj', 'occlusion_acc_pertraj', 'avg_jaccard_pertraj']
 
 
-def find_test_trials(dataset):
-    # glob follows the v3->v2 symlink for cmupanoptic_3dgs
-    trials = sorted(glob.glob(os.path.join(ROOT, dataset, 'test', '*', 'trial')))
-    return [t for t in trials if os.path.exists(os.path.join(t, 'pose3d.npz'))]
+def find_test_trials(dataset, root):
+    # glob follows the v3->v2 symlink for cmupanoptic_3dgs.
+    # Supports old convention (test/<subject>/trial/pose3d.npz) and tapvid layouts
+    # (test/<seq>/<id>/pose3d.npz for tapvid3d, test/<cat>/<name>/pose2d.npz for tapvid2d).
+    base = os.path.join(root, dataset, 'test')
+    pose3d = glob.glob(os.path.join(base, '**', 'pose3d.npz'), recursive=True)
+    pose2d = glob.glob(os.path.join(base, '**', 'pose2d.npz'), recursive=True)
+    return sorted(set(os.path.dirname(p) for p in pose3d + pose2d))
+
+
+def _to_np(x):
+    """Convert a torch tensor or array-like to a float64 numpy array."""
+    import torch
+    if isinstance(x, torch.Tensor):
+        return x.detach().cpu().numpy().astype(np.float64)
+    return np.asarray(x, dtype=np.float64)
+
+
+def load_trial_camera_ext(trial_path):
+    """Return ext for the first camera of a tapvid3d trial.
+
+    ext: (4,4) static world→cam extrinsic, or (T,4,4) for moving-cam sequences.
+         cam['ext'] is always a torch tensor after format_camera; converted to numpy.
+    """
+    metadata_path = os.path.join(trial_path, 'metadata.yaml')
+    cgroup = load_camera_group_from_metadata(metadata_path)
+    cam = cgroup[0]
+    return _to_np(cam['ext'])      # (4,4) static or (T,4,4) moving
+
+
+def eval_outputs_cam(out, trial_path, ds=None):
+    """Compute depth-relative cam-coord (and optionally world-coord) metrics for a tapvid3d trial.
+
+    Returns a dict of _cam / _world-suffixed keys to merge into the per-trial result.
+    World-coord metrics are added only when ds is in TAPVID3D_WORLD_DATASETS.
+    """
+    keys = set(out.files) if hasattr(out, 'files') else set(out)
+    cp = np.asarray(out['coords_pred'])          # (1, T, N, 3)
+    ct = np.asarray(out['coords_true'])          # (1, T, N, 3)
+    vp = np.asarray(out['vis_pred'])
+    vt = np.asarray(out['vis_true']).astype(bool)
+    qt = np.asarray(out['query_times']) if 'query_times' in keys else None
+
+    ext = load_trial_camera_ext(trial_path)
+
+    T = ct.shape[1]
+    depths = compute_cam_depths(ct[0], ext)      # (T, N)
+    depths_b = depths[np.newaxis]                # (1, T, N)
+
+    valid = np.isfinite(ct).all(axis=-1, keepdims=True)
+    if qt is not None:
+        qt_arr = np.asarray(qt).reshape(1, -1)
+        at_or_after = np.arange(T)[None, :, None] >= qt_arr[:, None, :]
+        valid = valid & at_or_after[..., None]
+    vis_eff = vt & valid                                   # (1, T, N, 1)
+
+    dx_avg_c, dx_dict_c = get_delta_x_avg_depth_relative(
+        cp, ct, vis_eff, TAPVID3D_THRESHOLDS, depths_b)
+    m = {
+        'mte_cam':           float(get_mte_cam(cp, ct, vis_eff, depths_b)),
+        'delta_x_avg_cam':   float(dx_avg_c),
+        'survival_rate_cam': float(get_survival_rate_depth_relative(
+            cp, ct, vis_eff, depths_b, TAPVID3D_SURVIVAL_DEPTH)),
+        'avg_jaccard_cam':   float(get_average_jaccard_depth_relative(
+            cp, ct, vp, vis_eff, TAPVID3D_THRESHOLDS, depths_b)[0]),
+    }
+    for th, v in dx_dict_c.items():
+        m[f'delta_x_{th}_cam'] = float(v)
+
+    if ds in TAPVID3D_WORLD_DATASETS:
+        dx_avg_w, dx_dict_w = get_delta_x_avg_world_coord(
+            cp, ct, vis_eff, TAPVID3D_THRESHOLDS, depths_b)
+        m.update({
+            'mte_world':           float(get_mte_world_coord(cp, ct, vis_eff, depths_b)),
+            'delta_x_avg_world':   float(dx_avg_w),
+            'survival_rate_world': float(get_survival_rate_world_coord(
+                cp, ct, vis_eff, depths_b, TAPVID3D_SURVIVAL_DEPTH)),
+            'avg_jaccard_world':   float(get_average_jaccard_world_coord(
+                cp, ct, vp, vis_eff, TAPVID3D_THRESHOLDS, depths_b)[0]),
+            'l1_world':            float(get_l1_world_coord(cp, ct, vis_eff, depths_b)),
+        })
+        for th, v in dx_dict_w.items():
+            m[f'delta_x_{th}_world'] = float(v)
+
+    return m
+
+
+def eval_outputs_pertraj(out, thresholds, avg_jaccard_val):
+    """Per-trajectory variants of delta_x_avg, occlusion_acc, avg_jaccard for tapvid2d.
+
+    Matches MVTracker's 'Our Metrics' convention (each track equally weighted).
+    avg_jaccard_pertraj == avg_jaccard since get_average_jaccard is already per-trajectory;
+    the caller passes avg_jaccard_val from the already-computed eval_outputs result.
+    """
+    keys = set(out.files) if hasattr(out, 'files') else set(out)
+    cp = np.asarray(out['coords_pred'])
+    ct = np.asarray(out['coords_true'])
+    vp = np.asarray(out['vis_pred'])
+    vt = np.asarray(out['vis_true']).astype(bool)
+    qt = np.asarray(out['query_times']) if 'query_times' in keys else None
+
+    T = ct.shape[1]
+    valid = np.isfinite(ct).all(axis=-1, keepdims=True)
+    if qt is not None:
+        qt_arr = np.asarray(qt).reshape(1, -1)
+        at_or_after = np.arange(T)[None, :, None] >= qt_arr[:, None, :]
+        valid = valid & at_or_after[..., None]
+    vis_eff = vt & valid
+
+    dx_avg, _ = get_delta_x_avg_pertraj(cp, ct, vis_eff, thresholds)
+    return {
+        'delta_x_avg_pertraj':   float(dx_avg),
+        'occlusion_acc_pertraj': float(get_occlusion_accuracy_pertraj(vp, vt, mask=valid)),
+        'avg_jaccard_pertraj':   float(avg_jaccard_val),
+    }
 
 
 def _vis_true_from_cams(vis_true_cams):
@@ -126,12 +281,38 @@ def write_report(all_summary, out_dir):
         json.dump(all_summary, f, indent=2)
 
     def table(agg):
-        L = ['| dataset | #tr | ' + ' | '.join(k.replace('_', '-') for k in METRIC_KEYS) + ' |',
-             '|---|---|' + '---|' * len(METRIC_KEYS)]
+        # include l1_world as an optional extra column when present for any dataset
+        extra = ['l1_world'] if any(f'l1_world_{agg}' in s for s in all_summary.values()) else []
+        all_keys = METRIC_KEYS + extra
+        L = ['| dataset | #tr | ' + ' | '.join(k.replace('_', '-') for k in all_keys) + ' |',
+             '|---|---|' + '---|' * len(all_keys)]
         for ds, s in all_summary.items():
-            L.append(f'| {ds} | {s["n_trials"]} | '
-                     + ' | '.join(f'{s[f"{k}_{agg}"]:.4f}' for k in METRIC_KEYS) + ' |')
+            vals = ' | '.join(
+                f'{s[f"{k}_{agg}"]:.4f}' if f'{k}_{agg}' in s else 'nan'
+                for k in all_keys)
+            L.append(f'| {ds} | {s["n_trials"]} | {vals} |')
         return '\n'.join(L)
+
+    tapvid_ds = [ds for ds in all_summary if ds in TAPVID3D_DATASETS
+                 and f'{METRIC_KEYS_CAM[0]}_mean' in all_summary[ds]]
+    tapvid_world_ds = [ds for ds in tapvid_ds if ds in TAPVID3D_WORLD_DATASETS
+                       and f'{METRIC_KEYS_WORLD[0]}_mean' in all_summary[ds]]
+    tapvid2d_ds = [ds for ds in all_summary if ds in TAPVID2D_DATASETS
+                   and f'{METRIC_KEYS_PERTRAJ[0]}_mean' in all_summary[ds]]
+
+    def table_depth(agg, keys, ds_list):
+        if not ds_list:
+            return '_none_'
+        L = ['| dataset | #tr | ' + ' | '.join(k.replace('_', '-') for k in keys) + ' |',
+             '|---|---|' + '---|' * len(keys)]
+        for ds in ds_list:
+            s = all_summary[ds]
+            L.append(f'| {ds} | {s["n_trials"]} | '
+                     + ' | '.join(f'{s[f"{k}_{agg}"]:.4f}' for k in keys) + ' |')
+        return '\n'.join(L)
+
+    depth_note = (f'Thresholds {TAPVID3D_THRESHOLDS}; a point passes when '
+                  f'dist/Z_depth < threshold. Survival threshold {TAPVID3D_SURVIVAL_DEPTH}.')
 
     md = ['# Test-set error metrics (query-first)', '',
           'Per-point first-visible query anchoring; pre-query + non-finite GT masked. Metrics via '
@@ -139,19 +320,41 @@ def write_report(all_summary, out_dir):
           '## Mean over trials', '', table('mean'), '',
           '## Median over trials', '', table('median'), '',
           'Thresholds (world units): '
-          + '; '.join(f'{ds} {SETTINGS[ds]["thresholds"]} surv={SETTINGS[ds]["survival"]}'
-                      for ds in all_summary if ds in SETTINGS)
-          + '. Per-trial breakdowns in `<dataset>/metrics.json`.']
+          + '; '.join(f'{ds} {SETTINGS.get(ds, DEFAULT_SETTINGS)["thresholds"]} '
+                      f'surv={SETTINGS.get(ds, DEFAULT_SETTINGS)["survival"]}'
+                      for ds in all_summary)
+          + '. Per-trial breakdowns in `<dataset>/metrics.json`.',
+          '',
+          '## TAPVid-3D camera-coordinate metrics (per-frame depth, mean)', '',
+          depth_note + ' Z_depth = per-point per-frame Z_cam.', '',
+          table_depth('mean', METRIC_KEYS_CAM, tapvid_ds), '',
+          '## TAPVid-3D camera-coordinate metrics (per-frame depth, median)', '',
+          table_depth('median', METRIC_KEYS_CAM, tapvid_ds), '',
+          '## TAPVid-3D world-coordinate metrics (per-trajectory depth, mean)', '',
+          depth_note + ' Z_depth = per-trajectory mean Z_cam (adt + drivetrack only).', '',
+          table_depth('mean', METRIC_KEYS_WORLD, tapvid_world_ds), '',
+          '## TAPVid-3D world-coordinate metrics (per-trajectory depth, median)', '',
+          table_depth('median', METRIC_KEYS_WORLD, tapvid_world_ds), '',
+          '## TAPVid-2D per-trajectory metrics (MVTracker "Our Metrics", mean)', '',
+          'Each track weighted equally (vs all-points-pooled in the standard table above). '
+          'avg-jaccard-pertraj == avg-jaccard (get_average_jaccard is already per-trajectory).', '',
+          table_depth('mean', METRIC_KEYS_PERTRAJ, tapvid2d_ds), '',
+          '## TAPVid-2D per-trajectory metrics (MVTracker "Our Metrics", median)', '',
+          table_depth('median', METRIC_KEYS_PERTRAJ, tapvid2d_ds)]
     with open(os.path.join(out_dir, 'metrics.md'), 'w') as f:
         f.write('\n'.join(md))
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--datasets', nargs='+', required=True, choices=list(SETTINGS),
-                    help='which datasets to evaluate')
+    ap.add_argument('--datasets', nargs='+', required=True,
+                    help='which datasets to evaluate; unknown datasets use TAP-Vid defaults '
+                         f'(thresholds={DEFAULT_SETTINGS["thresholds"]}, '
+                         f'survival={DEFAULT_SETTINGS["survival"]})')
     ap.add_argument('--out', required=True,
                     help='predictions/output folder: <out>/<dataset>/<trial>.npz (reused if present)')
+    ap.add_argument('--root', default=DEFAULT_ROOT,
+                    help='dataset root: expects <root>/<dataset>/test/.../trial/pose3d.npz')
     ap.add_argument('--wandb-folder', default=DEFAULT_WANDB,
                     help='wandb run dir (files/config.toml + files/checkpoints/); only loaded '
                          'when a trial needs inference')
@@ -193,12 +396,13 @@ def main():
     # which trials are cached (fast) vs need inference (slow).
     work = []
     for ds in args.datasets:
-        cfg = SETTINGS[ds]
+        cfg = SETTINGS.get(ds, DEFAULT_SETTINGS)
         n_views = args.n_views if args.n_views is not None else cfg['n_views']
         max_kpts = args.max_kpts if args.max_kpts is not None else cfg['max_kpts']
         ds_out = os.path.join(args.out, ds); os.makedirs(ds_out, exist_ok=True)
-        for tp in find_test_trials(ds):
-            tid = os.path.basename(os.path.dirname(tp))
+        test_base = os.path.join(args.root, ds, 'test')
+        for tp in find_test_trials(ds, args.root):
+            tid = os.path.relpath(tp, test_base).replace(os.sep, '_')
             npz = os.path.join(ds_out, f'{tid}.npz')
             work.append(dict(ds=ds, cfg=cfg, n_views=n_views, max_kpts=max_kpts, tp=tp,
                              tid=tid, npz=npz, cached=os.path.exists(npz) and not args.force))
@@ -225,6 +429,10 @@ def main():
             if w['cached']:
                 with np.load(w['npz'], allow_pickle=True) as data:
                     m = eval_outputs(data, cfg['thresholds'], cfg['survival'])
+                    if ds in TAPVID3D_DATASETS:
+                        m.update(eval_outputs_cam(data, w['tp'], ds))
+                    if ds in TAPVID2D_DATASETS:
+                        m.update(eval_outputs_pertraj(data, cfg['thresholds'], m['avg_jaccard']))
                 src = 'cached'
             else:
                 ms = get_model()
@@ -237,6 +445,10 @@ def main():
                     motion_margin=args.motion_margin)
                 torch.cuda.empty_cache()
                 m = eval_outputs(out, cfg['thresholds'], cfg['survival'])
+                if ds in TAPVID3D_DATASETS:
+                    m.update(eval_outputs_cam(out, w['tp'], ds))
+                if ds in TAPVID2D_DATASETS:
+                    m.update(eval_outputs_pertraj(out, cfg['thresholds'], m['avg_jaccard']))
                 src = 'infer'
             m['trial'] = tid; m['status'] = 'ok'
             results[ds].append(m)
@@ -264,6 +476,17 @@ def main():
             vals = np.array([r[k] for r in ok], dtype=float)
             summary[f'{k}_mean'] = float(np.nanmean(vals)) if vals.size else float('nan')
             summary[f'{k}_median'] = float(np.nanmedian(vals)) if vals.size else float('nan')
+        if ds in TAPVID3D_DATASETS:
+            depth_keys = METRIC_KEYS_CAM + (METRIC_KEYS_WORLD if ds in TAPVID3D_WORLD_DATASETS else [])
+            for k in depth_keys:
+                vals = np.array([r.get(k, float('nan')) for r in ok], dtype=float)
+                summary[f'{k}_mean'] = float(np.nanmean(vals)) if vals.size else float('nan')
+                summary[f'{k}_median'] = float(np.nanmedian(vals)) if vals.size else float('nan')
+        if ds in TAPVID2D_DATASETS:
+            for k in METRIC_KEYS_PERTRAJ:
+                vals = np.array([r.get(k, float('nan')) for r in ok], dtype=float)
+                summary[f'{k}_mean'] = float(np.nanmean(vals)) if vals.size else float('nan')
+                summary[f'{k}_median'] = float(np.nanmedian(vals)) if vals.size else float('nan')
         all_summary[ds] = summary
         with open(os.path.join(args.out, ds, 'metrics.json'), 'w') as f:
             json.dump({'summary': summary, 'per_trial': per_trial}, f, indent=2)

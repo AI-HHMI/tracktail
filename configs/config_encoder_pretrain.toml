@@ -34,6 +34,15 @@ prob_2d_only = 0.25
 crop_3d_enabled = true
 crop_3d_fraction = [0.05, 0.75]
 crop_3d_prob = 0.4
+# --- moving cameras (canonicalization policy) ---
+# Whether a dataset uses per-frame extrinsics is set PER DATASET by `moving_cams: true` in its
+# metadata.yaml (absent -> static); there is no enable switch here. These params only tune the
+# optional fix-camera/move-world canonicalization of moving-cam clips: a scene counts as
+# "static" (always canonicalized) when its mean per-frame 3D point motion is below
+# moving_cam_static_thresh; dynamic scenes are canonicalized with prob moving_cam_aug_prob.
+# Set both to 0 to load per-frame extrinsics without ever canonicalizing.
+moving_cam_static_thresh = 1e-3
+moving_cam_aug_prob = 0.5
 
 [dataset.train.curriculum]
 enabled = false
@@ -52,6 +61,10 @@ crop_to_points = true
 speed_thresh = 1.0
 prop_dynamic_kpts_to_sample = 0.7
 query_anytime = false
+# moving cameras (per-dataset via metadata). aug_prob=0 so dynamic scenes are NOT randomly
+# canonicalized during eval (static scenes still are, for self-consistency).
+moving_cam_static_thresh = 1e-3
+moving_cam_aug_prob = 0.0
 
 [dataset.test]
 split_dir = 'test'
@@ -59,6 +72,8 @@ max_res = 256
 n_frames = 16
 project_2d = false
 aug_prob = 0.0
+moving_cam_static_thresh = 1e-3
+moving_cam_aug_prob = 0.0
 
 [devices]
 device = 'cuda'

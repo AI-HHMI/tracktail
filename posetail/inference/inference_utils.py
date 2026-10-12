@@ -500,6 +500,7 @@ def load_camera_group_from_metadata(metadata_path, device='cpu'):
 
     offset_dict = cam_metadata.get('offset_dict', None)
     cam_type = cam_metadata.get('cam_type', 'pinhole')
+    moving = cam_metadata.get('moving_cams', False)
 
     intrinsics_dict = cam_metadata['intrinsic_matrices']
     extrinsics_dict = cam_metadata['extrinsic_matrices']

@@ -139,12 +139,15 @@ def get_eval_metrics(vis_pred, vis_true, coords_pred,
         coords_true, vis_pred, vis_eff, thresholds=thresholds,
         cube_scale=cube_scale, multiplier=delta_x_multiplier)
 
+    l1 = get_l1(coords_pred, coords_true, vis_eff)
+
     metrics = {f'{prefix}mte': mte,
                f'{prefix}delta_x_avg': delta_x_avg,
                f'{prefix}occlusion_acc': occlusion_acc,
                f'{prefix}avg_jaccard': avg_jaccard,
                f'{prefix}survival_rate': survival_rate,
-               f'{prefix}mpjpe': mpjpe}
+               f'{prefix}mpjpe': mpjpe,
+               f'{prefix}l1': l1}
 
     # Per-camera occlusion accuracy: scores the model's per-camera visibility logits
     # (vis_pred_2d) against per-camera GT (vis_true_cams, NaN=unknown), using the same
@@ -161,6 +164,40 @@ def get_eval_metrics(vis_pred, vis_true, coords_pred,
         metrics[f'{prefix}jaccard_{k:.3g}'] = v
 
     return metrics
+
+
+def get_l1(coords_pred, coords_true, vis_true):
+    '''Mean L1 norm of 3D tracking error for visible frames (TAPVid-3D).'''
+    vis = np.squeeze(vis_true.astype(bool), axis=-1)          # B, T, N
+    l1 = np.abs(coords_pred - coords_true).sum(axis=-1)       # B, T, N
+    mask = vis & np.isfinite(l1)
+    if not mask.any():
+        return float('nan')
+    return float(np.mean(l1[mask]))
+
+
+def get_l1_world_coord(coords_pred, coords_true, vis_true, depths):
+    """Depth-normalised L1: per-trajectory mean(L1_error) / mean_Z_traj.
+
+    Mirrors the world-coord depth normalisation (per-trajectory mean Z_cam) used
+    by all other world-coord metrics, making L1 comparable to D4RT reported values.
+    """
+    vis  = np.squeeze(vis_true.astype(bool), axis=-1)         # (B, T, N)
+    l1   = np.abs(coords_pred - coords_true).sum(axis=-1)     # (B, T, N)
+    d    = np.asarray(depths, dtype=np.float64)
+    if d.ndim == 2:
+        d = d[np.newaxis]                                      # (1, T, N)
+    B, _, N = l1.shape
+    track_vals = []
+    for b in range(B):
+        for n in range(N):
+            mask     = vis[b, :, n] & np.isfinite(l1[b, :, n])
+            depth_ok = (d[b, :, n] > 0) & np.isfinite(d[b, :, n])
+            if not (mask & depth_ok).any():
+                continue
+            mean_z = float(np.mean(d[b, mask & depth_ok, n]))
+            track_vals.append(float(np.mean(l1[b, mask, n]) / mean_z))
+    return float(np.mean(track_vals)) if track_vals else float('nan')
 
 
 def get_mte(coords_pred, coords_true, vis_true):
@@ -535,3 +572,348 @@ def get_average_jaccard(coords_pred, coords_true, vis_pred, vis_true, thresholds
     }
     aj = float(np.nanmean(list(jaccard_dict.values())))
     return aj, jaccard_dict
+
+
+# ── Per-trajectory variants of all-points-pooled metrics ─────────────────────
+#
+# delta_x and occlusion_acc pool over all (point, frame) pairs by default, which
+# weights long tracks more heavily.  These variants give every track equal weight,
+# matching the MVTracker "Our Metrics" convention.
+# Note: get_average_jaccard is already per-trajectory, so avg_jaccard needs no
+# separate variant.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_delta_x_pertraj(coords_pred, coords_true, vis_true, threshold):
+    """Fraction of visible frames within threshold, averaged per trajectory."""
+    dist2 = np.sum((coords_pred - coords_true) ** 2, axis=-1)    # (B, T, N)
+    within = dist2 < (threshold ** 2)
+    vis = np.squeeze(vis_true.astype(bool), axis=-1)              # (B, T, N)
+    B, _, N = dist2.shape
+    track_accs = []
+    for b in range(B):
+        for n in range(N):
+            v = vis[b, :, n]
+            if not v.any():
+                continue
+            track_accs.append(float(within[b, v, n].mean()))
+    return float(np.mean(track_accs)) if track_accs else float('nan')
+
+
+def get_delta_x_avg_pertraj(coords_pred, coords_true, vis_true, thresholds=None):
+    """Per-trajectory delta_x averaged over thresholds."""
+    if thresholds is None:
+        thresholds = [1, 2, 4, 8, 16]
+    results = [get_delta_x_pertraj(coords_pred, coords_true, vis_true, th)
+               for th in thresholds]
+    return float(np.nanmean(results)), dict(zip(thresholds, results))
+
+
+def get_occlusion_accuracy_pertraj(vis_pred, vis_true, mask=None):
+    """Occlusion accuracy averaged per trajectory (equal weight per track)."""
+    occ_pred = _sigmoid(vis_pred) < 0.5                           # (B, T, N, 1)
+    occ_true = ~vis_true                                          # (B, T, N, 1)
+    correct = np.squeeze(occ_pred == occ_true, axis=-1)          # (B, T, N)
+    if mask is not None:
+        valid = np.squeeze(np.asarray(mask).astype(bool), axis=-1)
+    else:
+        valid = np.ones(correct.shape, dtype=bool)
+    B, _, N = correct.shape
+    track_accs = []
+    for b in range(B):
+        for n in range(N):
+            m = valid[b, :, n]
+            if not m.any():
+                continue
+            track_accs.append(float(correct[b, m, n].mean()))
+    return float(np.mean(track_accs)) if track_accs else float('nan')
+
+
+# ── TAPVid-3D depth-relative metrics ─────────────────────────────────────────
+#
+# Both camera-coordinate (cam) and world-coordinate (world) metrics use the same
+# fixed thresholds δ ∈ {0.01, 0.04, 0.16, 0.64, 2.56} from the TAPVid-3D
+# supplemental.  A point is within threshold δ when:
+#
+#   dist / Z_depth < δ  (equivalently: dist < Z_depth * δ)
+#
+# where dist is the 3D Euclidean prediction error and Z_depth is depth:
+#
+#   cam-coord  — per-point per-frame Z_cam(t, i): the z-component of the GT
+#                point in the camera frame at frame t.  Requires the world→cam
+#                extrinsic.  Normalization is fine-grained (each frame has its
+#                own scale).
+#
+#   world-coord (D4RT) — per-trajectory mean depth: mean of Z_cam over all
+#                visible frames of that track.  One scale per trajectory, so the
+#                metric is comparable to the training-loss depth normalisation.
+#                PStudio is excluded (no camera motion → undefined world coord).
+#
+# Note: losses.py normalises by mean L2 distance from camera center (all T×N)
+# for training-loss scale invariance.  Here we need the z-component from the
+# extrinsic, which is NOT the same as L2 for off-axis points.
+# ──────────────────────────────────────────────────────────────────────────────
+
+def compute_cam_depths(coords_true_world, ext):
+    """Z-component (depth) of world-frame GT points in camera frame.
+
+    Args:
+        coords_true_world: (T, N, 3) world-frame coords (may contain NaN)
+        ext: (4, 4) static world→cam extrinsic, or (T_full, 4, 4) per-frame.
+             When per-frame and T_full > T, only the first T rows are used.
+    Returns:
+        depths: (T, N) z-component in camera frame (NaN propagates from inputs)
+    """
+    ext = np.asarray(ext, dtype=np.float64)
+    P   = np.asarray(coords_true_world, dtype=np.float64)    # (T, N, 3)
+    T   = P.shape[0]
+    if ext.ndim == 2:
+        R = ext[:3, :3]                                       # (3, 3)
+        t = ext[:3, 3]                                        # (3,)
+        P_cam = P @ R.T + t                                   # (T, N, 3)
+    else:
+        R = ext[:T, :3, :3]                                   # (T, 3, 3)
+        t = ext[:T, :3, 3]                                    # (T, 3)
+        P_cam = np.einsum('tij,tnj->tni', R, P) + t[:, np.newaxis, :]   # (T, N, 3)
+    return P_cam[..., 2]                                      # (T, N)
+
+
+# ── Camera-coordinate metrics (per-point per-frame depth normalization) ───────
+
+def get_delta_x_depth_relative(coords_pred, coords_true, vis_true,
+                                threshold_m, depths):
+    """APD for one threshold using per-point per-frame depth normalization.
+
+    A point at frame t is 'within threshold' when dist / Z_cam(t) < threshold_m.
+
+    Args:
+        coords_pred, coords_true: (B, T, N, 3)
+        vis_true: (B, T, N, 1) bool
+        threshold_m: scalar threshold (e.g. 0.01, 0.04, ... from TAPVid-3D supplemental)
+        depths: (B, T, N) or (T, N) GT z-depth in camera frame
+    """
+    dist2 = np.sum((coords_pred - coords_true) ** 2, axis=-1)    # (B, T, N)
+    d = np.asarray(depths, dtype=np.float64)
+    if d.ndim == 2:
+        d = d[np.newaxis]                                          # (1, T, N)
+    thr   = np.clip(d, 0.0, None) * threshold_m                   # (B, T, N)
+    good  = (dist2 < thr ** 2)[..., np.newaxis] & vis_true
+    total = np.sum(vis_true)
+    return float(np.sum(good) / total) if total > 0 else float('nan')
+
+
+def get_delta_x_avg_depth_relative(coords_pred, coords_true, vis_true,
+                                    thresholds_m, depths):
+    """Average depth-relative APD over a list of thresholds."""
+    results = [
+        get_delta_x_depth_relative(coords_pred, coords_true, vis_true,
+                                   th, depths)
+        for th in thresholds_m
+    ]
+    return float(np.nanmean(results)), dict(zip(thresholds_m, results))
+
+
+def get_mte_cam(coords_pred, coords_true, vis_eff, depths):
+    """Depth-normalised MTE: per-track median(dist / Z_cam), then mean over tracks.
+
+    Dimensionless — expresses error as a fraction of the point's depth.
+    Frames with non-positive or NaN depth are excluded regardless of visibility.
+
+    Args:
+        coords_pred, coords_true: (B, T, N, 3)
+        vis_eff: (B, T, N, 1) bool (visible AND valid = finite GT)
+        depths: (B, T, N) or (T, N) GT depth (z-component in camera frame)
+    """
+    d   = np.asarray(depths, dtype=np.float64)
+    if d.ndim == 2:
+        d = d[np.newaxis]                                          # (1, T, N)
+    vis  = np.squeeze(vis_eff.astype(bool), axis=-1)              # (B, T, N)
+    dist = np.linalg.norm(coords_pred - coords_true, axis=-1)     # (B, T, N)
+    ok   = (d > 0) & np.isfinite(d)
+    B, _, N = dist.shape
+    track_mtes = []
+    for b in range(B):
+        for n in range(N):
+            mask = vis[b, :, n] & ok[b, :, n]
+            if not mask.any():
+                continue
+            track_mtes.append(float(np.median(dist[b, mask, n] / d[b, mask, n])))
+    return float(np.mean(track_mtes)) if track_mtes else float('nan')
+
+
+def get_survival_rate_depth_relative(coords_pred, coords_true, vis_true,
+                                      depths, threshold_m):
+    """Survival rate with a per-frame depth-relative failure threshold.
+
+    A track fails at frame t when it is visible and dist[t] / Z_cam[t] > threshold_m.
+    """
+    d   = np.asarray(depths, dtype=np.float64)
+    if d.ndim == 2:
+        d = d[np.newaxis]                                          # (1, T, N)
+    vis  = np.squeeze(vis_true.astype(bool), axis=-1)             # (B, T, N)
+    dist = np.linalg.norm(coords_pred - coords_true, axis=-1)     # (B, T, N)
+    thr  = np.clip(d, 0.0, None) * threshold_m                    # (B, T, N)
+    B, T, N = dist.shape
+    ratios = []
+    for b in range(B):
+        for n in range(N):
+            if not vis[b, :, n].any():
+                continue
+            failed = np.where(vis[b, :, n] & (dist[b, :, n] > thr[b, :, n]))[0]
+            ratios.append(int(failed[0]) / T if len(failed) else 1.0)
+    return float(np.mean(ratios)) if ratios else float('nan')
+
+
+def get_average_jaccard_depth_relative(coords_pred, coords_true, vis_pred, vis_true,
+                                        thresholds_m, depths):
+    """Average Jaccard with per-point per-frame depth-relative thresholds.
+
+    Closeness threshold per point at frame t is Z_cam[t] * threshold_m.
+    """
+    d        = np.asarray(depths, dtype=np.float64)
+    if d.ndim == 2:
+        d = d[np.newaxis]                                          # (1, T, N)
+    gt_vis   = np.squeeze(vis_true.astype(bool),    axis=-1)      # (B, T, N)
+    pred_vis = np.squeeze(_sigmoid(vis_pred) > 0.5, axis=-1)      # (B, T, N)
+    dist     = np.linalg.norm(coords_pred - coords_true, axis=-1) # (B, T, N)
+    B, _, N  = dist.shape
+    per_thresh = {th: [] for th in thresholds_m}
+    for b in range(B):
+        for n in range(N):
+            vt   = gt_vis[b, :, n]
+            vh   = pred_vis[b, :, n]
+            dd   = dist[b, :, n]
+            thr  = np.clip(d[b, :, n], 0.0, None)                 # (T,)
+            for th in thresholds_m:
+                alpha = dd < (thr * th)
+                tp    = np.sum(vt & vh & alpha)
+                denom = np.sum(vt) + np.sum(~vt & vh) + np.sum(vt & vh & ~alpha)
+                if denom == 0:
+                    continue
+                per_thresh[th].append(float(tp / denom))
+    jaccard_dict = {
+        th: float(np.mean(vals)) if vals else float('nan')
+        for th, vals in per_thresh.items()
+    }
+    return float(np.nanmean(list(jaccard_dict.values()))), jaccard_dict
+
+
+# ── World-coordinate metrics (per-trajectory mean-depth normalization) ────────
+
+def get_delta_x_world_coord(coords_pred, coords_true, vis_true,
+                             threshold_m, depths):
+    """APD for one threshold using per-trajectory mean-depth normalization.
+
+    A point in trajectory n is 'within threshold' when dist / mean_Z_traj < threshold_m,
+    where mean_Z_traj = mean of Z_cam over all visible frames of that track.
+    """
+    d   = np.asarray(depths, dtype=np.float64)
+    if d.ndim == 2:
+        d = d[np.newaxis]                                          # (1, T, N)
+    vis  = np.squeeze(vis_true.astype(bool), axis=-1)             # (B, T, N)
+    dist2 = np.sum((coords_pred - coords_true) ** 2, axis=-1)     # (B, T, N)
+    B, _, N = dist2.shape
+    n_good = 0
+    n_total = 0
+    for b in range(B):
+        for n in range(N):
+            mask = vis[b, :, n] & (d[b, :, n] > 0) & np.isfinite(d[b, :, n])
+            if not mask.any():
+                continue
+            mean_z = float(np.mean(d[b, mask, n]))
+            thr2   = (mean_z * threshold_m) ** 2
+            n_good  += int(np.sum(dist2[b, mask, n] < thr2))
+            n_total += int(np.sum(mask))
+    return float(n_good / n_total) if n_total > 0 else float('nan')
+
+
+def get_delta_x_avg_world_coord(coords_pred, coords_true, vis_true,
+                                 thresholds_m, depths):
+    """Average world-coord APD over a list of thresholds."""
+    results = [
+        get_delta_x_world_coord(coords_pred, coords_true, vis_true, th, depths)
+        for th in thresholds_m
+    ]
+    return float(np.nanmean(results)), dict(zip(thresholds_m, results))
+
+
+def get_mte_world_coord(coords_pred, coords_true, vis_eff, depths):
+    """Depth-normalised MTE with per-trajectory mean-depth normalization.
+
+    Per track: median(dist) / mean_Z_traj over visible frames.
+    """
+    d   = np.asarray(depths, dtype=np.float64)
+    if d.ndim == 2:
+        d = d[np.newaxis]
+    vis  = np.squeeze(vis_eff.astype(bool), axis=-1)              # (B, T, N)
+    dist = np.linalg.norm(coords_pred - coords_true, axis=-1)     # (B, T, N)
+    B, _, N = dist.shape
+    track_mtes = []
+    for b in range(B):
+        for n in range(N):
+            mask = vis[b, :, n] & (d[b, :, n] > 0) & np.isfinite(d[b, :, n])
+            if not mask.any():
+                continue
+            mean_z = float(np.mean(d[b, mask, n]))
+            track_mtes.append(float(np.median(dist[b, mask, n]) / mean_z))
+    return float(np.mean(track_mtes)) if track_mtes else float('nan')
+
+
+def get_survival_rate_world_coord(coords_pred, coords_true, vis_true,
+                                   depths, threshold_m):
+    """Survival rate with a per-trajectory mean-depth failure threshold.
+
+    A track fails at frame t when it is visible and dist[t] / mean_Z_traj > threshold_m.
+    """
+    d   = np.asarray(depths, dtype=np.float64)
+    if d.ndim == 2:
+        d = d[np.newaxis]
+    vis  = np.squeeze(vis_true.astype(bool), axis=-1)             # (B, T, N)
+    dist = np.linalg.norm(coords_pred - coords_true, axis=-1)     # (B, T, N)
+    B, T, N = dist.shape
+    ratios = []
+    for b in range(B):
+        for n in range(N):
+            if not vis[b, :, n].any():
+                continue
+            depth_ok = (d[b, :, n] > 0) & np.isfinite(d[b, :, n])
+            if not depth_ok.any():
+                continue
+            mean_z = float(np.mean(d[b, depth_ok, n]))
+            thr    = mean_z * threshold_m
+            failed = np.where(vis[b, :, n] & (dist[b, :, n] > thr))[0]
+            ratios.append(int(failed[0]) / T if len(failed) else 1.0)
+    return float(np.mean(ratios)) if ratios else float('nan')
+
+
+def get_average_jaccard_world_coord(coords_pred, coords_true, vis_pred, vis_true,
+                                     thresholds_m, depths):
+    """Average Jaccard with per-trajectory mean-depth normalization."""
+    d        = np.asarray(depths, dtype=np.float64)
+    if d.ndim == 2:
+        d = d[np.newaxis]
+    gt_vis   = np.squeeze(vis_true.astype(bool),    axis=-1)      # (B, T, N)
+    pred_vis = np.squeeze(_sigmoid(vis_pred) > 0.5, axis=-1)      # (B, T, N)
+    dist     = np.linalg.norm(coords_pred - coords_true, axis=-1) # (B, T, N)
+    B, _, N  = dist.shape
+    per_thresh = {th: [] for th in thresholds_m}
+    for b in range(B):
+        for n in range(N):
+            vt      = gt_vis[b, :, n]
+            vh      = pred_vis[b, :, n]
+            dd      = dist[b, :, n]
+            depth_ok = (d[b, :, n] > 0) & np.isfinite(d[b, :, n]) & vt
+            if not depth_ok.any():
+                continue
+            mean_z  = float(np.mean(d[b, depth_ok, n]))
+            for th in thresholds_m:
+                alpha = dd < (mean_z * th)
+                tp    = np.sum(vt & vh & alpha)
+                denom = np.sum(vt) + np.sum(~vt & vh) + np.sum(vt & vh & ~alpha)
+                if denom == 0:
+                    continue
+                per_thresh[th].append(float(tp / denom))
+    jaccard_dict = {
+        th: float(np.mean(vals)) if vals else float('nan')
+        for th, vals in per_thresh.items()
+    }
+    return float(np.nanmean(list(jaccard_dict.values()))), jaccard_dict
