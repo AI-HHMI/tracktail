@@ -6,7 +6,7 @@ Start with the default Hugging Face model, a Hugging Face repository, a wandb ru
 directory, or explicit config/checkpoint paths:
 
     python server/server.py
-    python server/server.py --hf-repo ai-hhmi/posetail-static --revision 2026-08-24
+    python server/server.py --hf-repo ai-hhmi/tracktail-static --revision 2026-08-24
     python server/server.py --wandb /path/to/wandb/run-YYYYMMDD_HHMMSS-XXXXXXXX
     python server/server.py --config files/config.toml --checkpoint files/checkpoints/checkpoint_00010000.pth
 """
@@ -35,7 +35,7 @@ from tracktail.model.tracker_encoder import TrackerEncoder
 from tracktail.model.train_utils import load_checkpoint, load_config, _warn_unfilled_video_encoder
 
 _gpu_lock = asyncio.Lock()
-DEFAULT_HF_REPO = 'ai-hhmi/posetail-static-animal'
+DEFAULT_HF_REPO = 'ai-hhmi/tracktail-static-animal'
 
 # Training-only outputs of grid/gridresid/gridnorm models: '2d_logits' is the raw
 # (cams, b, t, n, 2P) bin-logit tensor (large, and only consumed by the CE loss) and

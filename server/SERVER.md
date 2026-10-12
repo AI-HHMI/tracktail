@@ -6,7 +6,7 @@ Optionally, it also loads a ScorerEncoder (track-quality scorer) and serves it a
 ## Starting the server
 
 With no model-source arguments, the server loads the latest revision of
-`ai-hhmi/posetail-static-animal` from the Hugging Face Hub:
+`ai-hhmi/tracktail-static-animal` from the Hugging Face Hub:
 
 ```bash
 python server/server.py
@@ -16,7 +16,7 @@ Other model sources are supported:
 
 ```bash
 # A different Hugging Face model or a dated release
-python server/server.py --hf-repo ai-hhmi/posetail-static --revision 2026-08-24
+python server/server.py --hf-repo ai-hhmi/tracktail-static --revision 2026-08-24
 
 # From a wandb run directory (same as --base-folder in inference_video.py)
 python server/server.py --wandb /path/to/wandb/run-YYYYMMDD_HHMMSS-XXXXXXXX
@@ -28,7 +28,7 @@ python server/server.py --wandb /path/to/wandb/run-... --checkpoint-number 10000
 python server/server.py --config /path/to/config.toml --checkpoint /path/to/checkpoint_00010000.pth
 
 # Override device, host, or port (defaults: device from config / cpu, host 0.0.0.0, port 8000)
-python server/server.py --hf-repo ai-hhmi/posetail-static-animal --device cuda:1 --port 8080
+python server/server.py --hf-repo ai-hhmi/tracktail-static-animal --device cuda:1 --port 8080
 
 # Also load a track-quality scorer (enables POST /score)
 python server/server.py --scorer-wandb /path/to/scorer/wandb/run-... [--scorer-checkpoint-number N]
@@ -59,9 +59,9 @@ Returns model metadata. Useful for clients to discover `n_frames` before sending
   "n_frames": 24,
   "image_size": 256,
   "device": "cuda:0",
-  "config_path": "hf://ai-hhmi/posetail-static-animal/config.toml@main",
-  "checkpoint_path": "hf://ai-hhmi/posetail-static-animal/model.pth@main",
-  "model_source": "huggingface:ai-hhmi/posetail-static-animal",
+  "config_path": "hf://ai-hhmi/tracktail-static-animal/config.toml@main",
+  "checkpoint_path": "hf://ai-hhmi/tracktail-static-animal/model.pth@main",
+  "model_source": "huggingface:ai-hhmi/tracktail-static-animal",
   "model_revision": null,
   "mode_3d": "encoder",
   "scorer_loaded": false,
@@ -175,7 +175,7 @@ Output keys (shapes use `B=1`, `T=n_frames`, `N=num_query_points`, `C=num_camera
   from the server's resize, but the crop offset is not removed.
 - Logit outputs (`vis_*`, `conf_*`) need a sigmoid to become probabilities.
 - Grid/classification checkpoints (`output_mode = grid | gridresid | gridnorm`, including the
-  default `ai-hhmi/posetail-static-animal`) also produce training-only outputs (`2d_logits`,
+  default `ai-hhmi/tracktail-static-animal`) also produce training-only outputs (`2d_logits`,
   `grid`). These are never included in the response, so every key loads with plain `np.load`
   (no `allow_pickle`).
 **Error responses** `400` — JSON `{"detail": "..."}` describing which validation failed, for example:

@@ -45,7 +45,7 @@ class TrackerEncoder(nn.Module):
         commit, or date tag such as ``"2026-08-24"``.
 
         Args:
-            repo_id: Hugging Face model repository, e.g. ``"ai-hhmi/posetail-static"``.
+            repo_id: Hugging Face model repository, e.g. ``"ai-hhmi/tracktail-static"``.
             revision: Hub revision to download. Defaults to the repository's default branch.
             device: Device for the model and checkpoint. Defaults to CUDA when available.
             cache_dir: Optional Hugging Face cache directory.

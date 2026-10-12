@@ -45,7 +45,7 @@ Library only, without the server: `pip install tracktail`. You need to install P
 ## Quick start: inference server
 
 ```bash
-pixi run python server/server.py               # downloads ai-hhmi/posetail-static-animal, serves on :8000
+pixi run python server/server.py               # downloads ai-hhmi/tracktail-static-animal, serves on :8000
 curl localhost:8000/info                       # n_frames, image_size, device, model source
 ```
 
@@ -78,7 +78,7 @@ window, and prints the output shapes.
 ### Server options
 | Flag | Purpose |
 |---|---|
-| `--hf-repo REPO [--revision TAG]` | Load from the HF Hub (default `ai-hhmi/posetail-static-animal`). Pin a dated release, e.g. `2026-08-24`. Set `HF_TOKEN` for private repos. |
+| `--hf-repo REPO [--revision TAG]` | Load from the HF Hub (default `ai-hhmi/tracktail-static-animal`). Pin a dated release, e.g. `2026-08-24`. Set `HF_TOKEN` for private repos. |
 | `--wandb RUN_DIR [--checkpoint-number N]` | Load a local training run (`files/config.toml` + `files/checkpoints/`) |
 | `--config C.toml --checkpoint X.pth` | Explicit config and checkpoint paths |
 | `--device cuda:0`, `--host`, `--port` | Runtime |
@@ -138,7 +138,7 @@ from tracktail.model.tracker_encoder import TrackerEncoder
 from tracktail.inference.inference_utils import (
     load_camera_group_from_metadata, run_tracker_encoder_on_videos, run_inference)
 
-model = TrackerEncoder.from_pretrained("ai-hhmi/posetail-static-animal", revision="2026-08-24")
+model = TrackerEncoder.from_pretrained("ai-hhmi/tracktail-static-animal", revision="2026-08-24")
 
 # a) arbitrary videos + calibration + query points
 cams = load_camera_group_from_metadata("trial/metadata.yaml")
@@ -167,8 +167,8 @@ trial/
 ## Pretrained models
 | Repo | Trained on | Clip / res | Release |
 |---|---|---|---|
-| `ai-hhmi/posetail-static-animal` (server default) | TODO | 24 frames / 256 px | `2026-08-24` |
-| `ai-hhmi/posetail-static` | TODO | TODO | `2026-08-24` |
+| `ai-hhmi/tracktail-static-animal` (server default) | TODO | 24 frames / 256 px | `2026-08-24` |
+| `ai-hhmi/tracktail-static` | TODO | TODO | `2026-08-24` |
 
 <!-- TODO: what "static" means (static cameras); animal vs general; expected accuracy -->
 
