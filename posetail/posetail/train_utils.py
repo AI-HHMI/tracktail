@@ -274,6 +274,39 @@ def check_config_compatibility(checkpoint, config, strict=True):
         print(f'  [info] model config differs on non-critical keys: {sorted(benign)}')
 
 
+# Prefix of every video-backbone parameter inside TrackerEncoder/ScorerEncoder.
+_VIDEO_ENCODER_PREFIX = 'scene_encoder.encoder.'
+
+
+def _warn_unfilled_video_encoder(missing_keys, dropped_keys):
+    """Loud warning when a non-strict load left video-backbone params at fresh init.
+
+    The loaders build the model with video_encoder_pretrained=False because the checkpoint is
+    about to supply every one of those tensors. load_state_dict(strict=False) plus
+    _filter_shape_mismatch can silently leave some unfilled (e.g. warm-starting across a
+    video_encoder_version change), and those would then be random noise rather than VJEPA2
+    weights. Nothing else in the load path would notice.
+    """
+    unfilled = sorted(k for k in list(missing_keys) + list(dropped_keys)
+                      if k.startswith(_VIDEO_ENCODER_PREFIX))
+    if not unfilled:
+        return
+    head = unfilled[:10]
+    more = f' (+{len(unfilled) - len(head)} more)' if len(unfilled) > len(head) else ''
+    print('  [WARN] ' + '=' * 70)
+    print(f'  [WARN] {len(unfilled)} VIDEO ENCODER params were NOT filled by this checkpoint and '
+          f'are at RANDOM INIT, not VJEPA2 weights:')
+    for k in head:
+        print(f'  [WARN]     {k}')
+    if more:
+        print(f'  [WARN]     ...{more}')
+    print('  [WARN] The loader builds with video_encoder_pretrained=False because the checkpoint '
+          'normally supplies every backbone tensor. It did not here.')
+    print('  [WARN] Rebuild with TrackerEncoder(..., video_encoder_pretrained=True) and load into '
+          'that model instead.')
+    print('  [WARN] ' + '=' * 70)
+
+
 def save_checkpoint(model, optimizer, prefix, i, config = None):
 
     checkpoint_dir = safe_make(os.path.join(prefix, 'checkpoints'))
@@ -519,10 +552,15 @@ def load_checkpoint(config_path, checkpoint_path, model = None,
         device = torch.device('cpu')
 
     # load the model 
+    built_here = model is None
     if model is None: 
 
         if config.model.mode_3d == 'encoder':
-            model = TrackerEncoder(**config.model)
+            # This function loads a full model_state into the model below (strict=False, so
+            # coverage is not guaranteed -- see _warn_unfilled_video_encoder), so the public
+            # VJEPA2 download would be discarded. TrackerTapNext/Tracker have no video backbone
+            # and do not accept the kwarg.
+            model = TrackerEncoder(**{**config.model, 'video_encoder_pretrained': False})
         elif config.model.mode_3d == 'tapnext':
             model = TrackerTapNext(**config.model)
         else:
@@ -561,7 +599,12 @@ def load_checkpoint(config_path, checkpoint_path, model = None,
     print(f'received missing keys: {missing_keys}')
     print(f'received unexpected keys: {unexpected_keys}')
 
-    checkpoint_dict = {'model': model}
+    # Only meaningful when THIS call chose the initialization (built_here): a caller-supplied
+    # model made its own pretrained choice and is responsible for checking it.
+    if built_here:
+        _warn_unfilled_video_encoder(missing_keys, dropped_keys)
+
+    checkpoint_dict = {'model': model, 'missing_keys': missing_keys, 'dropped_keys': dropped_keys}
 
     # apply schedule-free averaged (eval) weights for the inference/eval path. Skip entirely when
     # resolution interpolation changed any tensor shape: the optimizer's averaged buffers / baked
@@ -610,7 +653,10 @@ def load_checkpoint_no_inductor(config_path, checkpoint_path):
         device = torch.device('cpu')
 
     if config.model.mode_3d == 'encoder':
-        model = TrackerEncoder(**config.model)
+        # The strict load below (model.load_state_dict(state_dict), no strict=False) already
+        # requires every video-encoder key to be present, so a missing one raises instead of
+        # silently leaving a param at fresh init -- no extra guard needed here.
+        model = TrackerEncoder(**{**config.model, 'video_encoder_pretrained': False})
     elif config.model.mode_3d == 'tapnext':
         model = TrackerTapNext(**config.model)
     else:

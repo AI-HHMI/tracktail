@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "posetail"
-version = "0.1.0"
+version = "0.4.2"
 dependencies = [
     "aniposelib>=0.7.0",
     "easydict==1.13",
@@ -20,7 +20,7 @@ dependencies = [
     "setuptools<81",
     "schedulefree", "decord", "tqdm",
     "fastapi>=0.111", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9",
-    "requests>=2.31",
+    "requests>=2.31", "huggingface_hub>=0.30",
     ]
 requires-python = ">=3.11"
 description = "a model for tracking 2d or 3d animal pose through time"

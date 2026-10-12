@@ -136,8 +136,10 @@ def process_trial(
     inference_trial_path: str = None,
     min_cams: int = 2,
     overwrite: bool = False,
+    cam_names: list[str] | None = None,
     n_views: int = None,
     view_seed: int = 0,
+    pose_file: str | None = None,
 ):
     os.makedirs(output_trial_path, exist_ok=True)
     out_path = os.path.join(output_trial_path, "cotracker_3d.npz")
@@ -173,10 +175,17 @@ def process_trial(
     # Only keep cameras that are in both the metadata and the predictions
     cam_names_used = [n for n in cam_names_all if n in cam_names_pred]
 
-    # Subsample to n_views cameras if requested
-    if n_views is not None and len(cam_names_used) > n_views:
-        rng = np.random.RandomState(view_seed)
-        indices = sorted(rng.choice(len(cam_names_used), n_views, replace=False))
+    # Restrict to explicit camera names if provided
+    if cam_names is not None:
+        missing = [n for n in cam_names if n not in cam_names_used]
+        if missing:
+            print(f"    [skip] requested cameras not available: {missing}")
+            return
+        cam_names_used = [n for n in cam_names_used if n in cam_names]
+        print(f"    Using explicit cameras: {cam_names_used}")
+    elif n_views is not None and len(cam_names_used) > n_views:
+        rng = np.random.default_rng(view_seed)
+        indices = sorted(rng.choice(len(cam_names_used), n_views, replace=False).tolist())
         print(f"    Subsampling {n_views}/{len(cam_names_used)} cameras: indices {indices}")
         cam_names_used = [cam_names_used[i] for i in indices]
 
@@ -230,14 +239,34 @@ def process_trial(
         cgroup_sub, tracks_per_cam, vis_per_cam, min_cams=min_cams
     )
 
+    # Load ground-truth coords and visibility (use pose_file if provided, else pose3d.npz)
+    if pose_file is not None:
+        pose3d_path = pose_file if os.path.isabs(pose_file) else os.path.join(trial_path, pose_file)
+    else:
+        pose3d_path = os.path.join(trial_path, "pose3d.npz")
+    gt = np.load(pose3d_path)
+    coords_true = np.asarray(gt["pose"]).squeeze(0)[frame_numbers][:, valid_mask]  # (T, N_valid, 3)
+    vis_gt_cams = np.asarray(gt["vis"]).squeeze(0)[frame_numbers][:, valid_mask]   # (T, N_valid, n_cams)
+    vis_true = vis_gt_cams.any(axis=-1)                                            # (T, N_valid) bool
+
+    conf_logits = np.where(visibility_3d, 10.0, -10.0).astype(np.float32)  # (T, N)
+    video_paths = [os.path.join(trial_path, "img", cam) for cam in cam_names_used]
     np.savez(
         out_path,
-        coords_3d=coords_3d,           # (T, N, 3) float32
+        coords_3d=coords_3d,           # (T, N, 3) float32  — triangulated prediction
         visibility=visibility_3d,      # (T, N) bool
         frame_numbers=frame_numbers,   # (T,) int64
         valid_mask=valid_mask,         # (S*K,) bool — same as inference
         cam_names=np.array(cam_names_used, dtype=str),
         min_cams_used=min_cams,
+        coords_true=coords_true[np.newaxis].astype(np.float32),  # (1, T, N, 3) GT
+        vis_true=vis_true[np.newaxis, :, :, np.newaxis],         # (1, T, N, 1) GT bool
+        # render_video.py-compatible keys
+        coords_pred=coords_3d[np.newaxis].astype(np.float32),           # (1, T, N, 3)
+        conf_pred=conf_logits[np.newaxis],                               # (1, T, N) logits
+        vis_pred=conf_logits[np.newaxis, :, :, np.newaxis],             # (1, T, N, 1) logits
+        metadata_path=np.array(metadata_path, dtype=str),
+        video_paths=np.array(video_paths, dtype=str),
     )
 
     n_finite = np.isfinite(coords_3d).all(axis=-1).sum()
@@ -265,11 +294,17 @@ def parse_args():
     p.add_argument("--min-cams", type=int, default=2,
                    help="Minimum cameras needed to triangulate a point "
                         "(default: 2; set higher for more robust 3D)")
+    p.add_argument("--cam-names", nargs="+", default=None,
+                   help="Explicit camera names to use for triangulation; "
+                        "overrides --n-views and --view-seed")
     p.add_argument("--n-views", type=int, default=None,
                    help="Randomly subsample this many cameras before triangulation "
                         "(default: use all available)")
     p.add_argument("--view-seed", type=int, default=0,
                    help="RNG seed for camera subsampling (default: 0)")
+    p.add_argument("--pose-file", type=str, default=None,
+                   help="Pose file name used during inference (e.g. pose3d_100.npz); "
+                        "GT is loaded from the same file so dimensions match")
     p.add_argument("--overwrite", action="store_true",
                    help="Re-triangulate trials that already have cotracker_3d.npz")
     return p.parse_args()
@@ -302,8 +337,10 @@ def main():
                     inference_trial_path=inference_trial_path,
                     min_cams=args.min_cams,
                     overwrite=args.overwrite,
+                    cam_names=args.cam_names,
                     n_views=args.n_views,
                     view_seed=args.view_seed,
+                    pose_file=args.pose_file,
                 )
 
     print("Done.")

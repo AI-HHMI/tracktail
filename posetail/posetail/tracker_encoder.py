@@ -36,6 +36,75 @@ _N_AXIS = {k: v + 1 for k, v in _T_AXIS.items()}
 
 class TrackerEncoder(nn.Module):
 
+    @classmethod
+    def from_pretrained(cls, repo_id, revision=None, device=None, cache_dir=None):
+        """Load a packaged TrackerEncoder checkpoint from the Hugging Face Hub.
+
+        The packaged checkpoint contains the inference weights under ``model_state`` and
+        the constructor arguments under ``model_config``.  ``revision`` may be a branch,
+        commit, or date tag such as ``"2026-08-24"``.
+
+        Args:
+            repo_id: Hugging Face model repository, e.g. ``"ai-hhmi/posetail-static"``.
+            revision: Hub revision to download. Defaults to the repository's default branch.
+            device: Device for the model and checkpoint. Defaults to CUDA when available.
+            cache_dir: Optional Hugging Face cache directory.
+
+        Returns:
+            A ``TrackerEncoder`` in evaluation mode on ``device``.
+        """
+        from huggingface_hub import hf_hub_download
+
+        if device is None:
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            device = torch.device(device)
+
+        checkpoint_path = hf_hub_download(
+            repo_id=repo_id,
+            filename='model.pth',
+            revision=revision,
+            cache_dir=cache_dir,
+        )
+        checkpoint = torch.load(
+            checkpoint_path,
+            map_location=device,
+            weights_only=False,
+        )
+
+        if not isinstance(checkpoint, dict):
+            raise ValueError(
+                f'Packaged checkpoint from {repo_id!r} must be a dictionary, '
+                f'got {type(checkpoint).__name__}'
+            )
+
+        model_config = checkpoint.get('model_config')
+        if not isinstance(model_config, dict):
+            raise ValueError(
+                f'Packaged checkpoint from {repo_id!r} has no dictionary model_config'
+            )
+
+        state_dict = checkpoint.get('model_state')
+        if state_dict is None:
+            # Accept this spelling for forward compatibility with packages that preserve
+            # the original checkpoint key instead of renaming the eval weights.
+            state_dict = checkpoint.get('model_state_eval')
+        if not isinstance(state_dict, dict):
+            raise ValueError(
+                f'Packaged checkpoint from {repo_id!r} has no model_state dictionary'
+            )
+
+        # The packaged model_state below is loaded strict=True and covers every encoder tensor,
+        # so fetching the public VJEPA2 weights first would only be thrown away. Override rather
+        # than default so a model_config that happens to record True is not honoured here.
+        model = cls(**{**model_config, 'video_encoder_pretrained': False}).to(device)
+        model.load_state_dict(state_dict, strict=True)
+        model._pretrained_model_config = model_config
+        model._pretrained_repo_id = repo_id
+        model._pretrained_revision = revision
+        model.eval()
+        return model
+
     def __init__(self, image_size = 256,
                  stride_length = 16, stride_overlap = None,
                  unroll_windows = False,
@@ -43,6 +112,7 @@ class TrackerEncoder(nn.Module):
                  video_encoder_requires_grad = False,
                  video_encoder_hierarchical = True,
                  video_encoder_finetune_last_n_layers = None,
+                 video_encoder_pretrained = True,
                  scene_pos_embed_mode = 'learned',
                  rope_base = 100.0,
                  time_embed_mode = 'learned',
@@ -119,6 +189,7 @@ class TrackerEncoder(nn.Module):
         self.video_encoder_version = video_encoder_version
         self.video_encoder_hierarchical = video_encoder_hierarchical
         self.video_encoder_finetune_last_n_layers = video_encoder_finetune_last_n_layers
+        self.video_encoder_pretrained = bool(video_encoder_pretrained)
         # 'rope' is a decoder-level positional scheme, not an additive scene term: it means
         # "no additive scene pos_embed + 1-D temporal RoPE in the decoder cross-attention".
         # So map it to scene pos_embed_mode='none' and flip the decoder rope flag.
@@ -211,6 +282,7 @@ class TrackerEncoder(nn.Module):
             proj_mlp = scene_proj_mlp,
             video_encoder_finetune_last_n_layers = self.video_encoder_finetune_last_n_layers,
             pos_embed_mode = scene_pos_embed_mode_resolved,
+            pretrained = self.video_encoder_pretrained,
         )
         
         self.query_encoder = QueryEncoder(

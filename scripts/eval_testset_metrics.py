@@ -64,7 +64,7 @@ from posetail.posetail.eval_metrics import (                             # noqa:
 )
 
 DEFAULT_WANDB = '/groups/karashchuk/home/karashchukl/results/posetail-finetuning-v3/wandb/run-20260628_134003-39yczenk'
-DEFAULT_ROOT = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v5-test'
+DEFAULT_ROOT = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6'
 
 # TAP-Vid default thresholds (δavg over {1,2,4,8,16}) used for any dataset not listed below.
 DEFAULT_SETTINGS = dict(thresholds=[1, 2, 4, 8, 16], survival=50, n_views=None, max_kpts=2500)
@@ -81,6 +81,10 @@ SETTINGS = {
     # TAPVid-3D fixed-metric thresholds: 1cm, 4cm, 16cm, 64cm, 256cm
     # (supplemental paper values — 4× progression matching the depth-adaptive pixel thresholds).
     # Depth-relative cam/world metrics are added separately via eval_outputs_cam.
+    'point-odyssey-human':     dict(thresholds=[0.30, 0.60, 1.20, 2.40, 4.80], survival=50,
+                                    n_views=None, max_kpts=2500),
+    'po-animal-sub256-motion': dict(thresholds=[0.30, 0.60, 1.20, 2.40, 4.80], survival=50,
+                                    n_views=None, max_kpts=2500),
     'tapvid3d_adt':       dict(thresholds=[0.01, 0.04, 0.16, 0.64, 2.56], survival=0.50,
                                n_views=None, max_kpts=2500),
     'tapvid3d_drivetrack': dict(thresholds=[0.01, 0.04, 0.16, 0.64, 2.56], survival=0.50,
@@ -226,6 +230,15 @@ def eval_outputs_pertraj(out, thresholds, avg_jaccard_val):
     }
 
 
+def _vis_true_from_cams(vis_true_cams):
+    """OR-fuse per-camera GT visibility (NaN = unknown, excluded) across the camera axis
+    (last dim) to get the global visible/occluded label for the cameras ACTUALLY USED at
+    inference. An all-unknown frame has no evidence of visibility and is treated as occluded."""
+    vtc = np.asarray(vis_true_cams).astype(np.float64)
+    known_visible = np.isfinite(vtc) & (vtc > 0.5)
+    return known_visible.any(axis=-1, keepdims=True)
+
+
 def eval_outputs(out, thresholds, survival):
     """Compute the full metric set from a predictions dict (an in-memory outputs dict or an
     np.load NpzFile -- both index by key and expose .files/keys)."""
@@ -233,7 +246,6 @@ def eval_outputs(out, thresholds, survival):
     cp = torch.as_tensor(np.asarray(out['coords_pred']), dtype=torch.float32)
     ct = torch.as_tensor(np.asarray(out['coords_true']), dtype=torch.float32)
     vp = torch.as_tensor(np.asarray(out['vis_pred']), dtype=torch.float32)
-    vt = torch.as_tensor(np.asarray(out['vis_true']), dtype=torch.bool)
     qt = torch.as_tensor(np.asarray(out['query_times']), dtype=torch.long) \
         if 'query_times' in keys else None
     # Per-camera occlusion: model logits vs per-camera GT (both saved by run_inference when the
@@ -241,6 +253,17 @@ def eval_outputs(out, thresholds, survival):
     # per-cam metric is left as NaN (regenerate with --force to populate it).
     vp2d = np.asarray(out['vis_pred_2d']) if 'vis_pred_2d' in keys else None
     vtc = np.asarray(out['vis_true_cams']) if 'vis_true_cams' in keys else None
+    # Global vis_true is recomputed on the fly from vis_true_cams (OR over the cameras actually
+    # used at inference) rather than trusting the cached 'vis_true' array: predictions cached
+    # before the inference_utils.py fix baked in a vis_true OR'd over the FULL camera rig,
+    # independent of --n-views subsampling -- which desyncs the global occlusion_acc from
+    # occlusion_acc_percam and from what the model actually saw. Recomputing here fixes stale
+    # cached predictions retroactively, with no need to rerun inference; it is a no-op for
+    # fresh predictions where the saved vis_true is already consistent.
+    if vtc is not None:
+        vt = torch.as_tensor(_vis_true_from_cams(vtc), dtype=torch.bool)
+    else:
+        vt = torch.as_tensor(np.asarray(out['vis_true']), dtype=torch.bool)
     m = get_eval_metrics(vp, vt, cp, ct, thresholds=thresholds,
                          survival_threshold=survival, prefix='', query_times=qt,
                          vis_pred_2d=vp2d, vis_true_cams=vtc)
@@ -295,9 +318,15 @@ def write_report(all_summary, out_dir):
     depth_note = (f'Thresholds {TAPVID3D_THRESHOLDS}; a point passes when '
                   f'dist/Z_depth < threshold. Survival threshold {TAPVID3D_SURVIVAL_DEPTH}.')
 
+    cfg_rows = ['| dataset | n_views | view_seed |', '|---|---|---|']
+    for ds, s in all_summary.items():
+        n_views = s.get('n_views')
+        cfg_rows.append(f'| {ds} | {n_views if n_views is not None else "all"} | {s.get("view_seed", 0)} |')
+
     md = ['# Test-set error metrics (query-first)', '',
           'Per-point first-visible query anchoring; pre-query + non-finite GT masked. Metrics via '
           '`get_eval_metrics`, aggregated over test trials.', '',
+          '## Camera sampling config', '', '\n'.join(cfg_rows), '',
           '## Mean over trials', '', table('mean'), '',
           '## Median over trials', '', table('median'), '',
           'Thresholds (world units): '
@@ -342,10 +371,14 @@ def main():
     ap.add_argument('--checkpoint', type=int, default=None,
                     help='checkpoint step; default = latest checkpoint in the wandb folder')
     ap.add_argument('--force', action='store_true', help='recompute even if predictions exist')
-    ap.add_argument('--n-frames', type=int, default=256, help='cap; uses all available frames')
+    ap.add_argument('--n-frames', type=int, default=500, help='cap; uses all available frames')
     ap.add_argument('--max-kpts', type=int, default=None, help='override per-dataset max_kpts')
     ap.add_argument('--n-views', type=int, default=None, help='override per-dataset n_views')
     ap.add_argument('--view-seed', type=int, default=0)
+    ap.add_argument('--cam-names', nargs='+', default=None,
+                    help='Explicit camera names to use; overrides --n-views')
+    ap.add_argument('--pose-file', type=str, default=None,
+                    help='Override the pose file name (e.g. pose3d_100.npz; default: pose3d.npz)')
     # Crop setup: query-first runs through the windowed tracker, which re-crops every chunk
     # to FOLLOW the subject (the fix for the static-crop regression). motion-margin expands
     # each chunk's crop by the previous chunk's velocity so fast subjects (dex_ycb) stay
@@ -386,14 +419,17 @@ def main():
             tid = os.path.relpath(tp, test_base).replace(os.sep, '_')
             npz = os.path.join(ds_out, f'{tid}.npz')
             work.append(dict(ds=ds, cfg=cfg, n_views=n_views, max_kpts=max_kpts, tp=tp,
-                             tid=tid, npz=npz, cached=os.path.exists(npz) and not args.force))
+                             tid=tid, npz=npz, cam_names=args.cam_names,
+                             cached=os.path.exists(npz) and not args.force))
     total = len(work)
     n_cached = sum(w['cached'] for w in work)
     print(f'\n{total} trials across {len(args.datasets)} dataset(s): '
           f'{n_cached} cached, {total - n_cached} to infer')
     for ds in args.datasets:
         ws = [w for w in work if w['ds'] == ds]
-        print(f'  {ds}: {len(ws)} trials (n_views={ws[0]["n_views"] if ws else "-"}, '
+        cam_label = ('cam_names=' + str(ws[0]['cam_names'])) if (ws and ws[0]['cam_names']) \
+            else f'n_views={ws[0]["n_views"] if ws else "-"}'
+        print(f'  {ds}: {len(ws)} trials ({cam_label}, '
               f'max_kpts={ws[0]["max_kpts"] if ws else "-"}, '
               f'{sum(w["cached"] for w in ws)} cached)')
 
@@ -414,6 +450,10 @@ def main():
                         m.update(eval_outputs_cam(data, w['tp'], ds))
                     if ds in TAPVID2D_DATASETS:
                         m.update(eval_outputs_pertraj(data, cfg['thresholds'], m['avg_jaccard']))
+                    if 'cam_indices_used' in data:
+                        m['cam_indices_used'] = data['cam_indices_used'].tolist()
+                    if 'cam_names_used' in data:
+                        m['cam_names_used'] = data['cam_names_used'].tolist()
                 src = 'cached'
             else:
                 ms = get_model()
@@ -423,13 +463,18 @@ def main():
                     n_frames=args.n_frames, n_overlap=args.n_overlap, per_subject=True,
                     device=ms['device'], max_kpts=w['max_kpts'], n_views=w['n_views'],
                     seed=args.view_seed, outpath=w['npz'], query_first=True,
-                    motion_margin=args.motion_margin)
+                    motion_margin=args.motion_margin, cam_names_filter=w['cam_names'],
+                    pose_file=args.pose_file)
                 torch.cuda.empty_cache()
                 m = eval_outputs(out, cfg['thresholds'], cfg['survival'])
                 if ds in TAPVID3D_DATASETS:
                     m.update(eval_outputs_cam(out, w['tp'], ds))
                 if ds in TAPVID2D_DATASETS:
                     m.update(eval_outputs_pertraj(out, cfg['thresholds'], m['avg_jaccard']))
+                if 'cam_indices_used' in out:
+                    m['cam_indices_used'] = np.asarray(out['cam_indices_used']).tolist()
+                if 'cam_names_used' in out:
+                    m['cam_names_used'] = np.asarray(out['cam_names_used']).tolist()
                 src = 'infer'
             m['trial'] = tid; m['status'] = 'ok'
             results[ds].append(m)
@@ -452,7 +497,9 @@ def main():
     for ds in args.datasets:
         per_trial = results[ds]
         ok = [r for r in per_trial if r['status'] == 'ok']
-        summary = {'n_trials': len(ok)}
+        ws = [w for w in work if w['ds'] == ds]
+        ds_n_views = ws[0]['n_views'] if ws else None
+        summary = {'n_trials': len(ok), 'n_views': ds_n_views, 'view_seed': args.view_seed}
         for k in METRIC_KEYS:
             vals = np.array([r[k] for r in ok], dtype=float)
             summary[f'{k}_mean'] = float(np.nanmean(vals)) if vals.size else float('nan')

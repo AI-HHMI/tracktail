@@ -24,6 +24,7 @@ import traceback
 import numpy as np
 import pandas as pd
 import torch
+import yaml
 from pathlib import Path
 from tqdm import tqdm
 
@@ -34,9 +35,11 @@ from posetail.posetail.eval_metrics import get_eval_metrics
 # Used when --thresholds is not passed on the command line.
 # Explicit --thresholds always overrides these.
 DATASET_THRESHOLDS = {
-    'dex_ycb':          [x / 100 for x in [1, 2, 5, 10, 20]],
-    'kubric-multiview': [x / 13 for x in [0.65, 1.3, 2.6, 5.2, 10.4]],
-    'cmupanoptic_3dgs': [x / 100  for x in [5, 10, 20, 40]],
+    'dex_ycb':                  [x / 100 for x in [1, 2, 5, 10, 20]],
+    'kubric-multiview':         [x / 13 for x in [0.65, 1.3, 2.6, 5.2, 10.4]],
+    'cmupanoptic_3dgs':         [x / 100 for x in [5, 10, 20, 40]],
+    'point-odyssey-human':      [0.30, 0.60, 1.20, 2.40, 4.80],
+    'po-animal-sub256-motion':  [0.30, 0.60, 1.20, 2.40, 4.80],
 }
 
 
@@ -56,6 +59,9 @@ def parse_args():
                         help='L2 failure threshold for survival rate (default: 50)')
     parser.add_argument('--prefix', type=str, default='cotracker_',
                         help='Metric key prefix (default: cotracker_)')
+    parser.add_argument('--pose-file', type=str, default=None,
+                        help='Pose file name used during inference (e.g. pose3d_100.npz); '
+                             'GT is loaded from the same file so dimensions match')
     parser.add_argument('--force', action='store_true',
                         help='Recompute even if eval_metrics.npz already exists')
     parser.add_argument('--csv-out', type=str, default=None,
@@ -82,10 +88,15 @@ def find_trials(output_root, split, datasets=None):
         yield dataset_name, session, trial, pred_path
 
 
-def load_ground_truth(pose_path, frame_numbers, valid_mask):
+def load_ground_truth(pose_path, frame_numbers, valid_mask, cam_indices=None):
     """
     Load GT coords and visibility from pose3d.npz, aligned to frame_numbers
     and filtered to only the keypoints tracked (via valid_mask).
+
+    cam_indices : list of int, optional
+        Indices into the camera axis of vis_gt_raw to restrict visibility to
+        only the cameras actually used for triangulation. If None, all cameras
+        are used (OR over full rig).
 
     Returns
     -------
@@ -108,7 +119,11 @@ def load_ground_truth(pose_path, frame_numbers, valid_mask):
     coords_true = coords_true.transpose(1, 0, 2)[np.newaxis]  # (1, T, N, 3)
 
     if vis_gt_raw is not None:
-        vis_agg  = vis_gt_raw.any(axis=-1)                  # (S, T_full, K)
+        # Restrict to the cameras actually used for triangulation so that
+        # occlusion GT is consistent with what the model saw (same fix as
+        # in the posetail eval pipeline).
+        vis_sub = vis_gt_raw[..., cam_indices] if cam_indices is not None else vis_gt_raw
+        vis_agg  = vis_sub.any(axis=-1)                     # (S, T_full, K)
         vis_flat = vis_agg.transpose(0, 2, 1)               # (S, K, T_full)
         vis_flat = vis_flat.reshape(S * K, T_full)          # (S*K, T_full)
         vis_flat = vis_flat[valid_mask]                     # (N, T_full)
@@ -120,6 +135,18 @@ def load_ground_truth(pose_path, frame_numbers, valid_mask):
     return coords_true.astype(np.float32), vis_true.astype(bool)
 
 
+def _cam_indices_from_metadata(metadata_path, cam_names_used):
+    """Return the integer indices of cam_names_used within the sorted full camera list."""
+    with open(metadata_path) as f:
+        meta = yaml.safe_load(f)
+    all_names = list(meta['intrinsic_matrices'].keys())
+    if all(n.isdigit() for n in all_names):
+        all_names = sorted(all_names, key=int)
+    else:
+        all_names = sorted(all_names)
+    return [all_names.index(n) for n in cam_names_used]
+
+
 def run_trial(pred_path, pose_path, thresholds, survival_threshold, prefix):
     pred = np.load(pred_path)
 
@@ -127,6 +154,15 @@ def run_trial(pred_path, pose_path, thresholds, survival_threshold, prefix):
     visibility    = pred['visibility']     # (T, N) bool
     frame_numbers = pred['frame_numbers']  # (T,)
     valid_mask    = pred['valid_mask']     # (S*K,) bool
+
+    # Determine which camera indices (into the full rig) were used so that
+    # vis_true is restricted to the same cameras as triangulation.
+    cam_indices = None
+    if 'cam_names' in pred.files:
+        cam_names_used = pred['cam_names'].tolist()
+        metadata_path = Path(pose_path).parent / 'metadata.yaml'
+        if metadata_path.exists():
+            cam_indices = _cam_indices_from_metadata(str(metadata_path), cam_names_used)
 
     # Mask out triangulation failures: points with NaN coords (fewer than
     # min_cams cameras visible) should not be counted as visible.
@@ -148,7 +184,8 @@ def run_trial(pred_path, pose_path, thresholds, survival_threshold, prefix):
         vis_logits[np.newaxis, :, :, np.newaxis]                        # (1, T, N, 1)
     )
 
-    coords_true_np, vis_true_np = load_ground_truth(pose_path, frame_numbers, valid_mask)
+    coords_true_np, vis_true_np = load_ground_truth(
+        pose_path, frame_numbers, valid_mask, cam_indices=cam_indices)
     coords_true = torch.from_numpy(coords_true_np)  # (1, T, N, 3)
     vis_true    = torch.from_numpy(vis_true_np)     # (1, T, N, 1)
 
@@ -195,9 +232,10 @@ def main():
             metrics  = {k: float(existing[k]) for k in existing.files}
             n_skipped += 1
         else:
+            gt_filename = args.pose_file if args.pose_file is not None else 'pose3d.npz'
             pose_path = (
                 Path(args.dataset_root)
-                / dataset_name / args.split / session / trial / 'pose3d.npz'
+                / dataset_name / args.split / session / trial / gt_filename
             )
             if not pose_path.exists():
                 tqdm.write(f'  MISSING GT: {dataset_name}/{session}/{trial}')

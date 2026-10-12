@@ -96,9 +96,14 @@ def run_cotracker_single_camera(
     frames: torch.Tensor,        # (T, H, W, 3) uint8 or float32 in [0,255]
     queries_2d: torch.Tensor,    # (N, 2) float32, pixel (x, y) at frame 0
     device: torch.device,
+    query_batch_size: int | None = None,
 ):
     """
     Run CoTracker3 on one camera's video.
+
+    If query_batch_size is set, queries are split into chunks and run
+    independently (each chunk uses its own attention), then concatenated.
+    This trades result quality for memory when N is large.
 
     Returns
     -------
@@ -111,32 +116,49 @@ def run_cotracker_single_camera(
     video = video.to(device)
 
     N = queries_2d.shape[0]
-    # CoTracker queries: (B, N, 3) = (batch, point, [time_step, x, y])
-    # We query every point starting at frame 0
-    t_col = torch.zeros(N, 1, device=device)
-    queries = torch.cat([t_col, queries_2d.to(device)], dim=-1).unsqueeze(0)  # (1, N, 3)
 
-    with torch.no_grad():
-        tracks, visibility = model(video, queries=queries)
-        # tracks:     (1, T, N, 2)
-        # visibility: (1, T, N)  bool
+    if query_batch_size is None or N <= query_batch_size:
+        chunks = [queries_2d]
+    else:
+        chunks = list(torch.split(queries_2d, query_batch_size, dim=0))
 
-    return tracks.squeeze(0).cpu(), visibility.squeeze(0).cpu()
+    all_tracks = []
+    all_vis = []
+    for chunk in chunks:
+        n = chunk.shape[0]
+        t_col = torch.zeros(n, 1, device=device)
+        queries = torch.cat([t_col, chunk.to(device)], dim=-1).unsqueeze(0)  # (1, n, 3)
+
+        with torch.no_grad():
+            tracks, visibility = model(video, queries=queries)
+            # tracks:     (1, T, n, 2)
+            # visibility: (1, T, n)  bool
+
+        all_tracks.append(tracks.squeeze(0).cpu())
+        all_vis.append(visibility.squeeze(0).cpu())
+        torch.cuda.empty_cache()
+
+    return torch.cat(all_tracks, dim=1), torch.cat(all_vis, dim=1)
 
 
-def resize_frames(frames: np.ndarray, max_res: int):
+TARGET_RES = 256  # resize-and-pad target matching posetail's inference resolution
+
+
+def resize_and_pad(frames: np.ndarray, target: int = TARGET_RES):
     """
-    Resize (T, H, W, 3) so the longer edge is at most max_res.
-    Returns resized array and (new_W, new_H).
+    Resize (T, H, W, 3) so the long edge == target, then zero-pad to (T, target, target, 3).
+    Returns (padded, scale, pad_left, pad_top).
     """
-    H, W = frames.shape[1], frames.shape[2]
-    scale = max_res / max(H, W)
-    if scale >= 1.0:
-        return frames, (W, H)
-    new_W = int(round(W * scale))
+    T, H, W, C = frames.shape
+    scale = target / max(H, W)
     new_H = int(round(H * scale))
+    new_W = int(round(W * scale))
     resized = np.stack([cv2.resize(f, (new_W, new_H)) for f in frames], axis=0)
-    return resized, (new_W, new_H)
+    pad_top  = (target - new_H) // 2
+    pad_left = (target - new_W) // 2
+    padded = np.zeros((T, target, target, C), dtype=frames.dtype)
+    padded[:, pad_top:pad_top + new_H, pad_left:pad_left + new_W] = resized
+    return padded, scale, pad_left, pad_top
 
 
 # ── per-trial processing ─────────────────────────────────────────────────
@@ -149,12 +171,17 @@ def process_trial(
     start_frame: int = 0,
     n_frames: int | None = None,
     max_res: int | None = None,
+    query_batch_size: int | None = None,
     overwrite: bool = False,
+    pose_file: str | None = None,
 ):
     os.makedirs(outdir, exist_ok=True)
 
     metadata_path = os.path.join(trial_path, "metadata.yaml")
-    pose_path = os.path.join(trial_path, "pose3d.npz")
+    if pose_file is not None:
+        pose_path = pose_file if os.path.isabs(pose_file) else os.path.join(trial_path, pose_file)
+    else:
+        pose_path = os.path.join(trial_path, "pose3d.npz")
 
     if not os.path.exists(metadata_path):
         print(f"    [skip] missing metadata.yaml")
@@ -215,37 +242,32 @@ def process_trial(
 
         frames = views[cam_idx]  # (T, H, W, 3), uint8 tensor from decord/cv2
 
-        # Optional downscale
-        frames_np = frames.numpy() if isinstance(frames, torch.Tensor) else frames
-        if max_res is not None:
-            frames_np, (new_W, new_H) = resize_frames(frames_np, max_res)
-            video_size = np.array([new_W, new_H], dtype=np.int32)
-            # Scale query points proportionally
-            orig_H, orig_W = frames.shape[1], frames.shape[2]
-            scale_x = new_W / orig_W
-            scale_y = new_H / orig_H
-        else:
-            H, W = frames_np.shape[1], frames_np.shape[2]
-            video_size = np.array([W, H], dtype=np.int32)
-            scale_x = scale_y = 1.0
+        # Resize and pad to TARGET_RES × TARGET_RES (matching posetail's inference resolution)
+        frames_np = frames.numpy() if isinstance(frames, torch.Tensor) else np.asarray(frames)
+        frames_np, rp_scale, rp_pad_left, rp_pad_top = resize_and_pad(frames_np)
+        video_size = np.array([TARGET_RES, TARGET_RES], dtype=np.int32)
 
-        frames_t = torch.from_numpy(frames_np)  # (T, H, W, 3)
+        frames_t = torch.from_numpy(frames_np)  # (T, TARGET_RES, TARGET_RES, 3)
 
-        # Project 3D queries to this camera's 2D pixel space
-        queries_2d = project_to_camera(camera_group, query_3d, cam_idx)  # (N, 2)
-        queries_2d_scaled = queries_2d.clone()
-        queries_2d_scaled[:, 0] *= scale_x
-        queries_2d_scaled[:, 1] *= scale_y
+        # Project 3D queries to this camera's 2D pixel space, then into TARGET_RES space
+        queries_2d = project_to_camera(camera_group, query_3d, cam_idx)  # (N, 2) original pixels
+        queries_proc = queries_2d.clone()
+        queries_proc[:, 0] = queries_2d[:, 0] * rp_scale + rp_pad_left
+        queries_proc[:, 1] = queries_2d[:, 1] * rp_scale + rp_pad_top
 
         tracks, visibility = run_cotracker_single_camera(
-            model, frames_t, queries_2d_scaled, device
+            model, frames_t, queries_proc, device,
+            query_batch_size=query_batch_size,
         )
-        # tracks: (T, N, 2), visibility: (T, N)
+        # tracks: (T, N, 2) in TARGET_RES space — invert to original pixel space before saving
+        tracks_orig = tracks.clone()
+        tracks_orig[:, :, 0] = (tracks[:, :, 0] - rp_pad_left) / rp_scale
+        tracks_orig[:, :, 1] = (tracks[:, :, 1] - rp_pad_top)  / rp_scale
 
         tqdm.write(f"      {cam_name}: tracks {tuple(tracks.shape)}")
         np.savez(
             out_path,
-            tracks=tracks.numpy(),           # (T, N, 2) float32, pixel (x, y)
+            tracks=tracks_orig.numpy(),      # (T, N, 2) float32, pixel (x, y) in original space
             visibility=visibility.numpy(),   # (T, N) bool
             queries_2d=queries_2d.numpy(),   # (N, 2) in original pixel space
             frame_numbers=frame_numbers,     # (T,) int64
@@ -284,8 +306,14 @@ def parse_args():
     p.add_argument("--max-res", type=int, default=None,
                    help="Downsample long edge to this many pixels before "
                         "passing to CoTracker (reduces VRAM usage)")
+    p.add_argument("--query-batch-size", type=int, default=None,
+                   help="Split queries into batches of this size to reduce VRAM usage. "
+                        "Each batch runs independently (attention is local to the batch), "
+                        "so results differ slightly from full-N inference.")
     p.add_argument("--overwrite", action="store_true",
                    help="Re-run trials that already have cotracker/ outputs")
+    p.add_argument("--pose-file", type=str, default=None,
+                   help="Override pose3d.npz with this file for query points (e.g. pose3d_100.npz)")
     return p.parse_args()
 
 
@@ -328,7 +356,9 @@ def main():
                 start_frame=args.start_frame,
                 n_frames=args.n_frames,
                 max_res=args.max_res,
+                query_batch_size=args.query_batch_size,
                 overwrite=args.overwrite,
+                pose_file=args.pose_file,
             )
 
     print("Done.")

@@ -8,6 +8,7 @@ import torch
 
 import numpy as np
 from tqdm import tqdm
+from easydict import EasyDict
 
 from collections import defaultdict
 
@@ -18,6 +19,7 @@ from posetail.datasets.utils import get_dirs, disassemble_extrinsics
 from posetail.posetail.cube import project_points_torch
 from posetail.posetail.tracker_encoder import TrackerEncoder
 from posetail.posetail.train_utils import *
+from posetail.posetail.train_utils import _warn_unfilled_video_encoder
 
 
 
@@ -625,6 +627,29 @@ def load_model_from_base_folder(base_folder, checkpoint=None, device=None):
     return model, config, config_path, checkpoint_path
 
 
+def load_model_from_hub(repo_id, device=None, revision=None, cache_dir=None):
+    """Load a packaged TrackerEncoder from the Hugging Face Hub.
+
+    Returns ``(model, config)`` where ``config.model`` contains the embedded model
+    constructor configuration. The returned config intentionally has no dataset or
+    training sections because a packaged inference checkpoint does not need them.
+
+    Args:
+        repo_id: Hugging Face repository ID, such as ``ai-hhmi/posetail-static``.
+        device: Device for the model. Defaults to CUDA when available.
+        revision: Hub branch, commit, or date tag such as ``2026-08-24``.
+        cache_dir: Optional Hugging Face cache directory.
+    """
+    model = TrackerEncoder.from_pretrained(
+        repo_id,
+        revision=revision,
+        device=device,
+        cache_dir=cache_dir,
+    )
+    config = EasyDict({"model": model._pretrained_model_config})
+    return model, config
+
+
 def run_tracker_encoder_on_videos(
     model,
     video_paths,
@@ -1024,12 +1049,18 @@ def load_tracker_encoder_checkpoint(checkpoint_path, model_kwargs, device=None,
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    model = TrackerEncoder(**model_kwargs).to(device)
+    # Both branches below load a full checkpoint into this model right after construction, so
+    # the public VJEPA2 download would be discarded; override rather than trust model_kwargs.
+    model = TrackerEncoder(**{**model_kwargs, 'video_encoder_pretrained': False}).to(device)
 
     # When a config is available, route through load_checkpoint so schedule-free runs get the
     # averaged EVAL weights (eval_weights defaults to 'auto' -> swaps since optimizer is None).
     if config_path is not None:
-        load_checkpoint(config_path, checkpoint_path, model=model, device=device)
+        # load_checkpoint was passed an already-built model, so its own built_here guard is a
+        # no-op; check coverage here instead using the missing/dropped keys it returns.
+        checkpoint_dict = load_checkpoint(config_path, checkpoint_path, model=model, device=device)
+        _warn_unfilled_video_encoder(checkpoint_dict.get('missing_keys', []),
+                                     checkpoint_dict.get('dropped_keys', []))
         model.eval()
         return model
 
@@ -1038,7 +1069,8 @@ def load_tracker_encoder_checkpoint(checkpoint_path, model_kwargs, device=None,
           '(schedule-free averaged eval weights will NOT be applied)')
     checkpoint = torch.load(checkpoint_path, map_location=device)
     state_dict = checkpoint.get('model_state', checkpoint)
-    model.load_state_dict(state_dict, strict=False)
+    missing_keys, _ = model.load_state_dict(state_dict, strict=False)
+    _warn_unfilled_video_encoder(missing_keys, [])
     model.eval()
 
     return model
@@ -1125,12 +1157,13 @@ def occlusion_at_query(vis_used_s, query_time_valid, valid_mask, start_frame):
 
 
 def load_trial(trial_path, start_frame=0, n_frames=None, query_first=True,
-               max_points=None, seed=0):
+               max_points=None, seed=0, pose_file=None):
     """Load metadata, video/image paths, and query points from a trial directory,
     following the PosetailDataset convention.
 
     Detects 2D vs 3D from which pose file is present: pose3d.npz -> 3D (multi-view,
     metadata.yaml required), pose2d.npz -> 2D (single camera, metadata optional).
+    pose_file overrides the default 'pose3d.npz' filename (e.g. 'pose3d_100.npz').
     Query points have last dim 3 (3D world coords) or 2 (2D pixel coords) accordingly.
 
     query_first (3D only): anchor each point at its first valid+visible frame (mvtracker /
@@ -1148,7 +1181,8 @@ def load_trial(trial_path, start_frame=0, n_frames=None, query_first=True,
     'per_subject_valid_masks', 'query_times_flat', 'per_subject_query_times'.
     """
 
-    pose3d_path = os.path.join(trial_path, 'pose3d.npz')
+    pose3d_name = pose_file if pose_file is not None else 'pose3d.npz'
+    pose3d_path = os.path.join(trial_path, pose3d_name)
     pose2d_path = os.path.join(trial_path, 'pose2d.npz')
     if os.path.exists(pose3d_path):
         mode = '3d'
@@ -1284,6 +1318,8 @@ def run_inference(
     query_first=True,
     motion_margin=True,
     max_points=None,
+    cam_names_filter=None,
+    pose_file=None,
 ):
     """Run inference on one trial with an already-loaded model.
 
@@ -1304,7 +1340,8 @@ def run_inference(
         device = next(model.parameters()).device
 
     trial = load_trial(trial_path, start_frame=start_frame, n_frames=n_frames,
-                       query_first=query_first, max_points=max_points, seed=seed)
+                       query_first=query_first, max_points=max_points, seed=seed,
+                       pose_file=pose_file)
     mode                    = trial['mode']
     metadata_path           = trial['metadata_path']
     cam_names               = trial['cam_names']
@@ -1336,7 +1373,9 @@ def run_inference(
     n_cams_total = len(camera_group)
     cam_indices_used = list(range(n_cams_total))
 
-    if n_views is not None and n_views < n_cams_total:
+    if cam_names_filter is not None:
+        pass  # skip random subsampling; cam_names_filter selects cameras explicitly below
+    elif n_views is not None and n_views < n_cams_total:
         rng = np.random.default_rng(seed)
         cam_indices_used = sorted(rng.choice(n_cams_total, n_views, replace=False).tolist())
         print(f'Subsampling {n_views}/{n_cams_total} cameras: indices {cam_indices_used}')
@@ -1347,6 +1386,17 @@ def run_inference(
 
     # Record the cameras actually used, after any subsampling above.
     cam_names_used = [cam_names[i] for i in cam_indices_used]
+
+    if cam_names_filter is not None:
+        missing = [n for n in cam_names_filter if n not in cam_names_used]
+        if missing:
+            raise ValueError(f'Requested cameras not in trial: {missing}')
+        filter_idx = [cam_names_used.index(n) for n in cam_names_filter]
+        cam_indices_used = [cam_indices_used[j] for j in filter_idx]
+        camera_group = [camera_group[j] for j in filter_idx]
+        video_paths = [video_paths[j] for j in filter_idx]
+        cam_names_used = list(cam_names_filter)
+        print(f'Using explicit cameras: {cam_names_used}')
 
     # GT visibility restricted to the cameras actually used, for the occlusion query term.
     # vis_gt_raw is (subjects, time, kpts, n_cams_total); index the camera axis so the
@@ -1471,8 +1521,10 @@ def run_inference(
             subj_coords = subj_coords[:, vmask, :]                 # (T, K_s, 3)
             coords_true_parts.append(subj_coords)
 
-            if vis_gt_raw is not None:
-                subj_vis = vis_gt_raw[s_idx, frame_nums_gt]        # (T, n_kpts, n_cams)
+            if vis_gt_used is not None:
+                # OR over only the cameras actually fed to the model, so the global label is
+                # consistent with vis_true_cams / vis_pred under camera subsampling (n_views).
+                subj_vis = vis_gt_used[s_idx, frame_nums_gt]       # (T, n_kpts, n_cams_used)
                 subj_vis = subj_vis[:, vmask, :].any(axis=-1, keepdims=True)  # (T, K_s, 1)
             else:
                 subj_vis = np.all(np.isfinite(subj_coords), axis=-1, keepdims=True)
@@ -1498,9 +1550,13 @@ def run_inference(
         coords_flat_all = coords_flat_all[valid_flat]                         # (K_valid, n_time, R)
         coords_true = coords_flat_all[:, frame_nums_gt, :].transpose(1, 0, 2)[np.newaxis]  # (1, T, K_valid, R)
 
-        if vis_gt_raw is not None:
-            # vis_gt_raw is (n_subj, n_time, n_kpts, n_cams) — aggregate across cameras
-            vis_agg = vis_gt_raw.any(axis=-1)                                 # (n_subj, n_time, n_kpts)
+        if vis_gt_used is not None:
+            # OR over only the cameras actually fed to the model (vis_gt_used), not the full
+            # trial rig (vis_gt_raw) -- keeps the global label consistent with vis_true_cams /
+            # vis_pred under camera subsampling (n_views); otherwise vis_true stays pinned to
+            # the full-rig visible rate regardless of how many cameras the model actually sees.
+            # vis_gt_used is (n_subj, n_time, n_kpts, n_cams_used) — aggregate across cameras
+            vis_agg = vis_gt_used.any(axis=-1)                                # (n_subj, n_time, n_kpts)
             vis_flat_all = vis_agg.transpose(0, 2, 1)                        # (n_subj, n_kpts, n_time)
             vis_flat_all = vis_flat_all.reshape(n_subj * n_kpts_full, n_time_full)  # (S*K, n_time)
             vis_flat_all = vis_flat_all[valid_flat]                           # (K_valid, n_time)
@@ -1545,6 +1601,7 @@ def run_inference(
     outputs['n_overlap'] = n_overlap
     outputs['per_subject'] = per_subject
     outputs['n_cams_total'] = n_cams_total
+    outputs['cam_indices_used'] = np.array(cam_indices_used, dtype=np.int32)
     outputs['cam_names_used'] = np.array(cam_names_used, dtype=str)
 
     if isinstance(outputs['coords_pred'], torch.Tensor) and outputs['coords_pred'].ndim >= 2:

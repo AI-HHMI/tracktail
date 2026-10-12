@@ -179,6 +179,10 @@ def parse_args():
                         help='Number of past frames (incl. current) to include in each trail')
     parser.add_argument('--trail-thickness', type=int, default=2,
                         help='Width in pixels of the trail polyline')
+    parser.add_argument('--use-gt', action='store_true', default=False,
+                        help='Render ground-truth coordinates (coords_true) instead of predictions')
+    parser.add_argument('--max-points', type=int, default=None,
+                        help='Limit rendering to the first N keypoints')
 
     return parser.parse_args()
 
@@ -252,9 +256,18 @@ def main():
     # Load inference outputs
     data = np.load(args.input_npz, allow_pickle=True)
 
-    coords_pred = data['coords_pred']       # (1, T, N, R), R=3 (3D) or 2 (2D)
-    conf_pred = data['conf_pred']           # (1, T, N) or (1, T, N, 1), logits
-    vis_pred = data['vis_pred'] if 'vis_pred' in data else None  # (1, T, N, 1), logits
+    if args.use_gt:
+        coords_pred = data['coords_true']
+        conf_pred   = np.ones_like(data['conf_pred'])   # GT always confident; sigmoid(1.0) > 0.5
+        # Convert boolean vis_true to float logits so sigmoid works: True→10, False→-10
+        if 'vis_true' in data:
+            vis_pred = np.where(data['vis_true'], 10.0, -10.0).astype(np.float32)
+        else:
+            vis_pred = None
+    else:
+        coords_pred = data['coords_pred']       # (1, T, N, R), R=3 (3D) or 2 (2D)
+        conf_pred   = data['conf_pred']         # (1, T, N) or (1, T, N, 1), logits
+        vis_pred    = data['vis_pred'] if 'vis_pred' in data else None  # (1, T, N, 1), logits
     frame_numbers = data['frame_numbers']   # (T,)
     video_paths = [str(p) for p in data['video_paths']]
     start_frame = int(data['start_frame']) if 'start_frame' in data else 0
@@ -290,6 +303,13 @@ def main():
         if vis_pred.ndim == 3:
             vis_pred = vis_pred[..., 0]
         vis_pred = _sigmoid(vis_pred)   # (T, N)
+
+    if args.max_points is not None:
+        n = args.max_points
+        coords_pred = coords_pred[:, :n]
+        conf_pred   = conf_pred[:, :n]
+        if vis_pred is not None:
+            vis_pred = vis_pred[:, :n]
 
     n_frames = coords_pred.shape[0]
     n_kpts = coords_pred.shape[1]
