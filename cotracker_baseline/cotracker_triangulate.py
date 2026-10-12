@@ -36,7 +36,7 @@ import numpy as np
 from tqdm import tqdm
 
 from aniposelib.cameras import CameraGroup, Camera
-from posetail.datasets.utils import get_dirs, disassemble_extrinsics
+from tracktail.datasets.utils import get_dirs, disassemble_extrinsics
 
 
 # ── camera loading ────────────────────────────────────────────────────────

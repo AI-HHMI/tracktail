@@ -24,7 +24,7 @@ os.environ.setdefault('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
 import numpy as np
 import yaml
 
-from posetail.inference.inference_utils import load_model_from_base_folder, run_inference
+from tracktail.inference.inference_utils import load_model_from_base_folder, run_inference
 
 DEFAULT_PREFIX = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-finetuning-v4'
 DEFAULT_OUT_ROOT = '~/ghome/results/posetail-inference/2026-06-11'

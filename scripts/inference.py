@@ -3,8 +3,8 @@ import os
 
 from torch.utils.data import DataLoader
 
-from posetail.datasets.inference_dataset import PosetailInferenceDataset, custom_collate
-from posetail.inference.inference_utils import *
+from tracktail.datasets.inference_dataset import TracktailInferenceDataset, custom_collate
+from tracktail.inference.inference_utils import *
 from viz3d import *
 
 
@@ -51,7 +51,7 @@ def run_inference(dataset_path, config_path, checkpoint_path, outpath,
     set_seeds(config.training.seed)
 
     # create a dataset for one video
-    dataset = PosetailInferenceDataset(
+    dataset = TracktailInferenceDataset(
         dataset_path = dataset_path, 
         config = config, 
         split = split)

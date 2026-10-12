@@ -6,15 +6,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from posetail.posetail.networks import EmbedV2V
-from posetail.posetail.cube import is_point_visible, project_points_torch, project_cam
-from posetail.posetail.cube import CameraSelfAttention
-from posetail.posetail.cube import signed_log1p, signed_expm1
-from posetail.posetail.utils import get_fourier_encoding, apply_rope_1d, get_3d_sincos_pos_embed
+from tracktail.model.networks import EmbedV2V
+from tracktail.model.cube import is_point_visible, project_points_torch, project_cam
+from tracktail.model.cube import CameraSelfAttention
+from tracktail.model.cube import signed_log1p, signed_expm1
+from tracktail.model.utils import get_fourier_encoding, apply_rope_1d, get_3d_sincos_pos_embed
 
 from einops import rearrange, repeat, einsum
 
-from posetail.posetail.vjepa2 import (
+from tracktail.model.vjepa2 import (
     vjepa2_1_vit_base_384,
     vjepa2_1_vit_large_384,
     vjepa2_1_vit_giant_384,

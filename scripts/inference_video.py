@@ -20,7 +20,7 @@ import argparse
 
 import torch
 
-from posetail.inference.inference_utils import load_model_from_base_folder, run_inference
+from tracktail.inference.inference_utils import load_model_from_base_folder, run_inference
 
 
 def parse_args():

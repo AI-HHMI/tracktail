@@ -7,12 +7,12 @@ import torch.nn.functional as F
 
 from einops import rearrange, einsum, reduce, repeat
 
-from posetail.posetail.cube import UnprojectViews, project_volumes, project_points_torch, get_camera_scale
-from posetail.posetail.transformer import TimeSpaceTransformer, MLP
-from posetail.posetail.networks import ResidualFeatureExtractor, TriplaneFeatureExtractor
-from posetail.posetail.networks import MinicubesV2V, SimpleV2V, ViewAttentionV2V, QueryViewAttentionV2V
-from posetail.posetail.networks import HieraFeatureExtractor, SAM2HieraFeatureExtractor 
-from posetail.posetail.utils import get_pos_encoding, get_fourier_encoding, PadToMultiple, count_parameters
+from tracktail.model.cube import UnprojectViews, project_volumes, project_points_torch, get_camera_scale
+from tracktail.model.transformer import TimeSpaceTransformer, MLP
+from tracktail.model.networks import ResidualFeatureExtractor, TriplaneFeatureExtractor
+from tracktail.model.networks import MinicubesV2V, SimpleV2V, ViewAttentionV2V, QueryViewAttentionV2V
+from tracktail.model.networks import HieraFeatureExtractor, SAM2HieraFeatureExtractor 
+from tracktail.model.utils import get_pos_encoding, get_fourier_encoding, PadToMultiple, count_parameters
 
 from torchvision import transforms
 

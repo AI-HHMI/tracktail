@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Vendored verbatim from ~/builds/tapnet/tapnet/tapnext/pscan.py so that posetail
+# Vendored verbatim from ~/builds/tapnet/tapnet/tapnext/pscan.py so that tracktail
 # has no external path dependency on the tapnet package. See tapnext.py /
 # tracker_tapnext.py for the native TAPNext++ re-implementation that consumes it.
 

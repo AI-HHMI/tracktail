@@ -1,4 +1,4 @@
-"""Track-quality scorer built on the posetail tracker encoder/decoder.
+"""Track-quality scorer built on the tracktail tracker encoder/decoder.
 
 `ScorerEncoder` subclasses `TrackerEncoder` so every reused submodule (scene_encoder,
 query_encoder, decoder, norms, transform_norm) keeps its name and shape -> the trained
@@ -15,10 +15,10 @@ import torch
 import torch.nn as nn
 from einops import rearrange, repeat
 
-from posetail.posetail.cube import (get_camera_scale, project_points_torch,
+from tracktail.model.cube import (get_camera_scale, project_points_torch,
                                     points_to_rays)
-from posetail.posetail.tracker_encoder import TrackerEncoder
-from posetail.posetail.encoder_decoder import AttentionPooling
+from tracktail.model.tracker_encoder import TrackerEncoder
+from tracktail.model.encoder_decoder import AttentionPooling
 
 
 class ScorerEncoder(TrackerEncoder):
@@ -283,7 +283,7 @@ class ScorerEncoder(TrackerEncoder):
         return scores, precision, labels
 
     def print_summary(self):
-        from posetail.posetail.utils import count_parameters
+        from tracktail.model.utils import count_parameters
         print("ScorerEncoder PARAMETERS")
         print("  total parameters: {:,d}".format(count_parameters(self)))
         print("  query encoder params: {:,d}".format(count_parameters(self.query_encoder)))

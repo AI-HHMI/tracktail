@@ -28,7 +28,7 @@ import yaml
 from pathlib import Path
 from tqdm import tqdm
 
-from posetail.posetail.eval_metrics import get_eval_metrics
+from tracktail.model.eval_metrics import get_eval_metrics
 
 
 # Per-dataset default thresholds (already divided to the correct scale).

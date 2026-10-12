@@ -35,11 +35,11 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from posetail.inference.inference_utils import (
+from tracktail.inference.inference_utils import (
     build_video_readers,
     load_camera_group_from_metadata,
 )
-from posetail.posetail.cube import project_points_torch
+from tracktail.model.cube import project_points_torch
 
 
 def generate_colors(n):
@@ -279,7 +279,7 @@ def main():
 
     # Override with trial path if provided (recompute video paths from the trial)
     if args.trial_path is not None:
-        from posetail.inference.inference_utils import load_trial
+        from tracktail.inference.inference_utils import load_trial
         trial = load_trial(args.trial_path, start_frame=start_frame)
         metadata_path = trial['metadata_path']
         video_paths = trial['video_paths']

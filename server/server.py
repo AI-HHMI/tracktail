@@ -6,7 +6,7 @@ Start with the default Hugging Face model, a Hugging Face repository, a wandb ru
 directory, or explicit config/checkpoint paths:
 
     python server/server.py
-    python server/server.py --hf-repo ai-hhmi/posetail-static --revision 2026-08-24
+    python server/server.py --hf-repo ai-hhmi/tracktail-static --revision 2026-10-12
     python server/server.py --wandb /path/to/wandb/run-YYYYMMDD_HHMMSS-XXXXXXXX
     python server/server.py --config files/config.toml --checkpoint files/checkpoints/checkpoint_00010000.pth
 """
@@ -27,15 +27,43 @@ from fastapi.responses import Response
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from posetail.inference.inference_utils import (load_model_from_base_folder,
+from tracktail.inference.inference_utils import (load_model_from_base_folder,
                              load_model_from_hub, resize_camera_group,
                              resolve_config_and_checkpoint)
-from posetail.posetail.scorer_encoder import ScorerEncoder
-from posetail.posetail.tracker_encoder import TrackerEncoder
-from posetail.posetail.train_utils import load_checkpoint, load_config, _warn_unfilled_video_encoder
+from tracktail.model.scorer_encoder import ScorerEncoder
+from tracktail.model.tracker_encoder import TrackerEncoder
+from tracktail.model.train_utils import load_checkpoint, load_config, _warn_unfilled_video_encoder
 
 _gpu_lock = asyncio.Lock()
-DEFAULT_HF_REPO = 'ai-hhmi/posetail-static-animal'
+DEFAULT_HF_REPO = 'ai-hhmi/tracktail-static-animal'
+
+# Training-only outputs of grid/gridresid/gridnorm models: '2d_logits' is the raw
+# (cams, b, t, n, 2P) bin-logit tensor (large, and only consumed by the CE loss) and
+# 'grid' is a nested dict of loss geometry that np.savez would pickle into an object
+# array the client cannot np.load without allow_pickle=True.
+_TRAINING_ONLY_OUTPUT_KEYS = frozenset({'2d_logits', 'grid'})
+
+
+def _outputs_to_numpy(outputs: dict) -> dict:
+    """Convert model outputs to plain numeric numpy arrays for an .npz response.
+
+    Drops training-only keys, None values, and anything that is not array-like (e.g.
+    nested dicts), so every entry loads with the default np.load(allow_pickle=False).
+    """
+    result = {}
+    for key, val in outputs.items():
+        if val is None or key in _TRAINING_ONLY_OUTPUT_KEYS:
+            continue
+        if isinstance(val, torch.Tensor):
+            arr = val.detach().cpu().numpy()
+        elif isinstance(val, (dict, list, tuple, str)):
+            continue
+        else:
+            arr = np.asarray(val)
+        if arr.dtype == object:
+            continue
+        result[key] = arr
+    return result
 
 
 def load_scorer_model(*, wandb=None, config=None, checkpoint=None,
@@ -181,7 +209,7 @@ async def info():
     }
 
 
-async def _parse_scene_request(meta, images, device, n_frames, image_size):
+async def _parse_scene_request(meta, images, device, image_size):
     """Decode uploaded images, build+resize the camera_group, and build per-camera view
     tensors. Shared by /predict and /score (coords parsing differs, so it stays in the
     handlers). Returns (camera_group, views, scales) where scales are the per-camera
@@ -249,19 +277,36 @@ async def _parse_scene_request(meta, images, device, n_frames, image_size):
     # Record per-camera scale factors before resize so we can un-scale 2d_pred later
     scales = [float(image_size) / max(cam['size'].tolist()) for cam in camera_group]
 
-    # Scale so max(H,W) == image_size, matching PosetailDataset / inference_video
+    # Scale so max(H,W) == image_size, matching TracktailDataset / inference_video
     camera_group = resize_camera_group(camera_group, image_size)
+
+    # Infer the clip length from the uploaded frames. The encoders resize their temporal
+    # position embeddings to the runtime length, so requests need not match model.n_frames.
+    frame_counts = {cam_name: len(cam_frames[cam_name]) for cam_name in cam_frames}
+    n_input_frames = next(iter(frame_counts.values()))
+    if n_input_frames % 2 != 0:
+        raise HTTPException(
+            400,
+            detail=f'Clip length must be even, got {n_input_frames} frames',
+        )
+    if n_input_frames < app.state.model.scene_encoder.tubelet_size:
+        raise HTTPException(
+            400,
+            detail=(f'At least {app.state.model.scene_encoder.tubelet_size} frames are required '
+                    f'by the video encoder, got {n_input_frames}'),
+        )
+    for cam_name, count in frame_counts.items():
+        if count != n_input_frames:
+            raise HTTPException(
+                400,
+                detail=f'Camera {cam_name}: expected {n_input_frames} frames to match other cameras, got {count}',
+            )
 
     # Build per-camera view tensors, resizing frames to the scaled camera size
     views = []
     for cam_idx, cam_info in enumerate(cameras_meta):
         cam_name = cam_info['name']
         frame_dict = cam_frames[cam_name]
-        if len(frame_dict) != n_frames:
-            raise HTTPException(
-                400,
-                detail=f'Camera {cam_name}: expected {n_frames} frames, got {len(frame_dict)}',
-            )
         target_wh = tuple(camera_group[cam_idx]['size'].tolist())  # (W, H) for cv2.resize
         frames = np.stack(
             [cv2.resize(frame_dict[i], target_wh) for i in sorted(frame_dict)], axis=0
@@ -306,7 +351,6 @@ async def predict(
 
     model = app.state.model
     device = app.state.device
-    n_frames = app.state.n_frames
     image_size = app.state.image_size
 
     if query_times_list is not None and len(query_times_list) != len(coords_list):
@@ -319,7 +363,7 @@ async def predict(
         )
 
     camera_group, views, scales = await _parse_scene_request(
-        meta, images, device, n_frames, image_size)
+        meta, images, device, image_size)
 
     coords = torch.tensor(coords_list, dtype=torch.float32, device=device).unsqueeze(0)
     query_times = None
@@ -343,13 +387,7 @@ async def predict(
         scale_t = torch.tensor(scales, device=device).view(-1, 1, 1, 1, 1)
         outputs['2d_pred'] = outputs['2d_pred'] / scale_t
 
-    result = {}
-    for key, val in outputs.items():
-        if val is None:
-            continue
-        result[key] = val.cpu().numpy() if isinstance(val, torch.Tensor) else np.asarray(val)
-
-    return _npz_response(result, 'predictions.npz')
+    return _npz_response(_outputs_to_numpy(outputs), 'predictions.npz')
 
 
 @app.post('/score')
@@ -375,7 +413,6 @@ async def score(
 
     scorer = app.state.scorer
     device = app.state.device
-    n_frames = app.state.n_frames
     image_size = app.state.image_size
 
     # Scorer coords are a FULL-SEQUENCE trajectory [T, K, 3] (not query points [N, 3]).
@@ -385,14 +422,14 @@ async def score(
             400,
             detail=f'/score coords must be a full-sequence trajectory [T, K, 3], got shape {list(coords_arr.shape)}',
         )
-    if coords_arr.shape[0] != n_frames:
+    camera_group, views, _scales = await _parse_scene_request(
+        meta, images, device, image_size)
+    if coords_arr.shape[0] != views[0].shape[1]:
         raise HTTPException(
             400,
-            detail=f'/score expects T={n_frames} frames, got {coords_arr.shape[0]}',
+            detail=(f'/score coords have T={coords_arr.shape[0]} frames, but uploaded images '
+                    f'have T={views[0].shape[1]}'),
         )
-
-    camera_group, views, _scales = await _parse_scene_request(
-        meta, images, device, n_frames, image_size)
 
     coords_full = torch.from_numpy(coords_arr).to(device).unsqueeze(0)  # [1, T, K, 3]
 

@@ -1,13 +1,13 @@
-"""posetail: a model for tracking 2d or 3d animal pose through time.
+"""tracktail: multi-view 3D point tracking without depth input.
 
-This makes `posetail` a regular package so it is discovered by
+This makes `tracktail` a regular package so it is discovered by
 `setuptools.find_packages()` and importable from an (editable) install regardless of
-the current working directory. Subpackages: `posetail.posetail`, `posetail.datasets`.
+the current working directory. Subpackages: `tracktail.model`, `tracktail.datasets`.
 """
 
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 
 try:
-    __version__ = _pkg_version("posetail")
+    __version__ = _pkg_version("tracktail")
 except PackageNotFoundError:  # running from a source checkout, not installed
     __version__ = "0.0.0+unknown"

@@ -35,12 +35,12 @@ from torch.utils.data import DataLoader, DistributedSampler
 from lightning.fabric import Fabric
 from schedulefree import AdamWScheduleFree
 
-from posetail.datasets.posetail_dataset import PosetailDataset
-from posetail.datasets.scorer_corruption import (ScorerTripletDataset, triplet_collate,
+from tracktail.datasets.tracktail_dataset import TracktailDataset
+from tracktail.datasets.scorer_corruption import (ScorerTripletDataset, triplet_collate,
                                                  seed_worker)
-from posetail.posetail.scorer_encoder import ScorerEncoder
-from posetail.posetail.losses_scorer import TripletScorerLoss
-from posetail.posetail.train_utils import (load_config, save_config, set_seeds, resolve_seed, write_json,
+from tracktail.model.scorer_encoder import ScorerEncoder
+from tracktail.model.losses_scorer import TripletScorerLoss
+from tracktail.model.train_utils import (load_config, save_config, set_seeds, resolve_seed, write_json,
                          build_optimizer_param_groups, load_checkpoint, save_checkpoint,
                          total_to_per_gpu, dict_to_device, get_timestamp,
                          drop_nan_motion_metrics, _warn_unfilled_video_encoder)
@@ -65,7 +65,7 @@ def build_optimizer(model, config, fabric, lr):
 
     if config.training.scheduler_type == 'muon':
         from torch.optim import Muon as TorchMuon
-        from posetail.posetail.muon import DualOptimizer
+        from tracktail.model.muon import DualOptimizer
         adj = config.training.optimizer.get('muon_adjust_lr_fn', 'match_rms_adamw')
         muon_scale = config.training.optimizer.get('muon_lr_scale', 1.0)
         dec_substr = ('decoder.cross_attns', 'decoder.mlps', 'decoder.camera_attns',
@@ -148,13 +148,13 @@ def _triplet_to_device(trip, device):
 
 
 def _build_scorer_dataset(config, split, corruption_cfg):
-    """Build a ScorerTripletDataset whose base `PosetailDataset` returns full, un-augmented frames.
+    """Build a ScorerTripletDataset whose base `TracktailDataset` returns full, un-augmented frames.
 
     The scorer owns rotation + crop-to-points + resize + appearance aug (done per triplet view in
     make_triplet), so the base must NOT crop/resize/augment -- otherwise it would crop+resize to
     256 first and the scorer's rotation would shrink a thin crop below imgaug's 32px floor. The
     config file stays the source of truth for the FINAL views: we read those settings, hand them to
-    the scorer, temporarily force the base to skip them, then restore the config (PosetailDataset
+    the scorer, temporarily force the base to skip them, then restore the config (TracktailDataset
     reads config into attributes at __init__, so the restore is safe and keeps save_config faithful).
     """
     ds_cfg = config.dataset[split]
@@ -167,7 +167,7 @@ def _build_scorer_dataset(config, split, corruption_cfg):
     ds_cfg['crop_to_points'] = False
     ds_cfg['max_res'] = -1
     ds_cfg['should_augment_prob'] = 0.0
-    base = PosetailDataset(config, split=split)
+    base = TracktailDataset(config, split=split)
     for k, v in saved.items():
         ds_cfg[k] = v
     return ScorerTripletDataset(base, view_cfg)

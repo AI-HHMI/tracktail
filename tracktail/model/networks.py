@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn 
 import torch.nn.functional as F
 
-from posetail.posetail.utils import init_kwargs
+from tracktail.model.utils import init_kwargs
 
 
 class ResUnit(nn.Module):
@@ -337,13 +337,13 @@ class HieraFeatureExtractor(nn.Module):
         super().__init__()
 
         # Lazy import: hiera is only needed by the legacy Tracker path.
-        # Install via `pip install posetail[legacy-tracker]`.
+        # Install manually: `pip install hiera-transformer` (see pyproject.toml legacy-tracker note).
         try:
             import hiera
         except ImportError as e:
             raise ImportError(
                 "HieraFeatureExtractor requires the 'hiera-transformer' package "
-                "(legacy Tracker only). Install it with: pip install posetail[legacy-tracker]"
+                "(legacy Tracker only). Install it with: pip install hiera-transformer"
             ) from e
 
         self.model = hiera.Hiera.from_pretrained(pretrained_model)
@@ -382,13 +382,14 @@ class SAM2HieraFeatureExtractor(nn.Module):
         super().__init__()
 
         # Lazy import: sam2 is only needed by the legacy Tracker path.
-        # Install via `pip install posetail[legacy-tracker]`.
+        # Install manually: `pip install "sam-2 @ git+https://github.com/facebookresearch/sam2.git"`.
         try:
             from sam2.sam2_image_predictor import SAM2ImagePredictor
         except ImportError as e:
             raise ImportError(
                 "SAM2HieraFeatureExtractor requires the 'sam-2' package "
-                "(legacy Tracker only). Install it with: pip install posetail[legacy-tracker]"
+                "(legacy Tracker only). Install it with: "
+                "pip install \"sam-2 @ git+https://github.com/facebookresearch/sam2.git\""
             ) from e
 
         predictor = SAM2ImagePredictor.from_pretrained(pretrained_model)
@@ -537,7 +538,7 @@ class VJEPAFeatureUpsampler(nn.Module):
         
         return outputs        
     
-from posetail.posetail.vjepa2 import (
+from tracktail.model.vjepa2 import (
     vjepa2_1_vit_base_384,
     vjepa2_1_vit_large_384,
     vjepa2_1_vit_giant_384,

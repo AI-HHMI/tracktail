@@ -5,8 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from einops import rearrange, repeat, einsum
-from posetail.posetail.cube import get_camera_scale, project_points_torch, is_point_visible
-from posetail.posetail.cube import to_homogeneous, from_homogeneous, signed_log1p, solve_scale_offset
+from tracktail.model.cube import get_camera_scale, project_points_torch, is_point_visible
+from tracktail.model.cube import to_homogeneous, from_homogeneous, signed_log1p, solve_scale_offset
 
 from collections import defaultdict
 

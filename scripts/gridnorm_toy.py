@@ -17,12 +17,12 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from posetail.posetail.cube import (
+from tracktail.model.cube import (
     points_to_rays, get_camera_scale, _invert_SE3,
     to_homogeneous, from_homogeneous, project_points_torch,
 )
-from posetail.posetail.losses import normalize_by_mean_depth
-from posetail.inference.inference_utils import load_camera_group_from_metadata
+from tracktail.model.losses import normalize_by_mean_depth
+from tracktail.inference.inference_utils import load_camera_group_from_metadata
 
 DATA = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v3/kubric-multiview'
 IMAGE_SIZE = 256          # model input res (only used by the gridresid comparison)
