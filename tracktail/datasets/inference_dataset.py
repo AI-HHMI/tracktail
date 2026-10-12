@@ -14,9 +14,9 @@ from aniposelib.cameras import CameraGroup, Camera
 from easydict import EasyDict as edict
 from einops import rearrange
 
-from posetail.datasets.utils import get_dirs, load_yaml, disassemble_extrinsics, format_sample_input
-from posetail.posetail.cube import project_points_torch, is_point_visible
-from posetail.posetail.train_utils import format_camera_group, dict_to_device
+from tracktail.datasets.utils import get_dirs, load_yaml, disassemble_extrinsics, format_sample_input
+from tracktail.model.cube import project_points_torch, is_point_visible
+from tracktail.model.train_utils import format_camera_group, dict_to_device
 
 
 
@@ -52,7 +52,7 @@ def custom_collate(batch):
     return batch
 
 
-class PosetailInferenceDataset(Dataset): 
+class TracktailInferenceDataset(Dataset): 
 
     def __init__(self, dataset_path, config, split): 
 

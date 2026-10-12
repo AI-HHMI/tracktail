@@ -18,7 +18,7 @@ pixi run python cotracker_triangulate.py \
     --datasets kubric-multiview dex_ycb \
     --split test
 
-# cmupanoptic uses 4 cameras to match posetail SETTINGS
+# cmupanoptic uses 4 cameras to match tracktail SETTINGS
 pixi run python cotracker_triangulate.py \
     --dataset-root /groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v5 \
     --output-root /home/ruppk2@hhmi.org/cotracker-baseline/cotracker-outputs-paper-final \

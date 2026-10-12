@@ -13,9 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Vendored from ~/builds/tapnet/tapnet/tapnext/tapnext_lru_modules.py so posetail
+# Vendored from ~/builds/tapnet/tapnet/tapnext/tapnext_lru_modules.py so tracktail
 # has no external path dependency on the tapnet package. The ONLY change from
-# upstream is the pscan import path (now posetail.posetail.pscan). These SSM
+# upstream is the pscan import path (now tracktail.model.pscan). These SSM
 # primitives are numerically delicate (NaN-guarded sqrt, parallel scan) and are
 # reused unchanged by the native TAPNext++ re-implementation in tapnext.py.
 
@@ -25,7 +25,7 @@ from collections.abc import Sequence
 from typing import NamedTuple
 
 import einops
-from posetail.posetail.pscan import pscan
+from tracktail.model.pscan import pscan
 import torch
 from torch import nn
 from torch.nn import functional as F

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# release.sh — bump version, commit, tag, build, and publish posetail to PyPI.
+# release.sh — bump version, commit, tag, build, and publish tracktail to PyPI.
 # Run inside the pixi env, e.g.:  pixi run ./release.sh 0.1.0
 cd "$(dirname "$0")"
 

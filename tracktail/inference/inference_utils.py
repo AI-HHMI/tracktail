@@ -15,11 +15,11 @@ from collections import defaultdict
 from decord import VideoReader, cpu
 from aniposelib.cameras import CameraGroup, Camera
 
-from posetail.datasets.utils import get_dirs, disassemble_extrinsics
-from posetail.posetail.cube import project_points_torch
-from posetail.posetail.tracker_encoder import TrackerEncoder
-from posetail.posetail.train_utils import *
-from posetail.posetail.train_utils import _warn_unfilled_video_encoder
+from tracktail.datasets.utils import get_dirs, disassemble_extrinsics
+from tracktail.model.cube import project_points_torch
+from tracktail.model.tracker_encoder import TrackerEncoder
+from tracktail.model.train_utils import *
+from tracktail.model.train_utils import _warn_unfilled_video_encoder
 
 
 
@@ -403,7 +403,7 @@ def crop_camera_group_to_queries(camera_group, query_coords, min_crop_dim, paddi
             current_height = high[1] - low[1]
 
             # Cap each axis at the image dimension so the crop never exceeds the
-            # frame (matches posetail_dataset.crop_cgroup_to_points). Without the
+            # frame (matches tracktail_dataset.crop_cgroup_to_points). Without the
             # per-axis cap, a wide bbox forces min_dim > frame height, and
             # `low = high - min_dim` yields a negative offset -> load_multiview_clip's
             # numpy slice wraps instead of padding, breaking the 2D<->3D geometry.
@@ -454,7 +454,7 @@ def resize_camera_group(camera_group, target_res):
         cam['mat'][2, 2] = 1
 
         if 'offset' in cam:
-            # Keep offset float (matches posetail_dataset.resize_camera_group).
+            # Keep offset float (matches tracktail_dataset.resize_camera_group).
             # Rounding to int here left a sub-pixel (<0.5px) mismatch against the
             # exact `mat * scale`, since project_cam does `mat @ X - offset`.
             cam['offset'] = cam['offset'] * scale
@@ -566,12 +566,12 @@ def load_camera_group_from_metadata(metadata_path, device='cpu'):
 def load_camera_group_2d(video_paths, metadata_path=None, device='cpu'):
     """Build a single-camera group for a 2D (uncalibrated) trial.
 
-    Mirrors PosetailDataset._build_2d_cgroup:
+    Mirrors TracktailDataset._build_2d_cgroup:
       (1) fully-calibrated metadata.yaml -> real camera;
       (2) metadata.yaml with only camera_widths/heights -> nominal pinhole;
       (3) no usable metadata -> read one image to get the size -> nominal pinhole.
     """
-    from posetail.datasets.posetail_dataset import _make_nominal_2d_camera
+    from tracktail.datasets.tracktail_dataset import _make_nominal_2d_camera
 
     cam_meta = None
     if metadata_path is not None and os.path.exists(metadata_path):
@@ -1088,7 +1088,7 @@ def sort_by_camera_name(paths):
 def resolve_video_paths(video_paths):
     """If a single directory is given that contains subdirectories (one per camera),
     expand it into a list of per-camera image folder paths, matching the
-    PosetailDataset convention of img_path/cam_name/frame.png."""
+    TracktailDataset convention of img_path/cam_name/frame.png."""
     if len(video_paths) == 1 and os.path.isdir(video_paths[0]):
         root = video_paths[0]
         subdirs = [
@@ -1159,7 +1159,7 @@ def occlusion_at_query(vis_used_s, query_time_valid, valid_mask, start_frame):
 def load_trial(trial_path, start_frame=0, n_frames=None, query_first=True,
                max_points=None, seed=0):
     """Load metadata, video/image paths, and query points from a trial directory,
-    following the PosetailDataset convention.
+    following the TracktailDataset convention.
 
     Detects 2D vs 3D from which pose file is present: pose3d.npz -> 3D (multi-view,
     metadata.yaml required), pose2d.npz -> 2D (single camera, metadata optional).

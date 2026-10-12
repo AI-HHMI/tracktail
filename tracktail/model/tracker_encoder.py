@@ -7,12 +7,12 @@ import torch.nn.functional as F
 
 from einops import rearrange, einsum, reduce, repeat
 
-from posetail.posetail.cube import get_camera_scale, from_homogeneous, to_homogeneous
-from posetail.posetail.cube import undistort_points, triangulate_simple_batch, triangulate_simple_batch_reg, project_points_torch
-from posetail.posetail.cube import points_to_rays, _invert_SE3, solve_scale_offset
-from posetail.posetail.cube import noisy_or_logit
-from posetail.posetail.utils import PadToMultiple, PadToSize, count_parameters
-from posetail.posetail.encoder_decoder import SceneRepresentation, QueryEncoder, Decoder
+from tracktail.model.cube import get_camera_scale, from_homogeneous, to_homogeneous
+from tracktail.model.cube import undistort_points, triangulate_simple_batch, triangulate_simple_batch_reg, project_points_torch
+from tracktail.model.cube import points_to_rays, _invert_SE3, solve_scale_offset
+from tracktail.model.cube import noisy_or_logit
+from tracktail.model.utils import PadToMultiple, PadToSize, count_parameters
+from tracktail.model.encoder_decoder import SceneRepresentation, QueryEncoder, Decoder
 
 from torchvision import transforms
 

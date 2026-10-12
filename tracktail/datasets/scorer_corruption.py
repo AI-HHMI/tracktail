@@ -28,8 +28,8 @@ import torch
 from einops import rearrange
 from easydict import EasyDict as edict
 
-from posetail.posetail.cube import get_camera_scale, is_point_visible
-from posetail.datasets.posetail_dataset import (rotate_points_image_plane,
+from tracktail.model.cube import get_camera_scale, is_point_visible
+from tracktail.datasets.tracktail_dataset import (rotate_points_image_plane,
                                                 rotate_camera_image_plane_3d,
                                                 _vis_2d_bounds)
 
@@ -301,7 +301,7 @@ def crop_views(views, crops):
 def resize_views(views, cgroup, target_res, coords=None):
     """Resize each view so its longest side == target_res, scaling the camera (and 2D coords).
 
-    Mirrors `PosetailDataset.resize_camera_group` (fixed target, no randint jitter) but also
+    Mirrors `TracktailDataset.resize_camera_group` (fixed target, no randint jitter) but also
     resizes the actual image frames. `views`: list (per camera) of [b,t,h,w,3] float tensors.
     Returns (views, cgroup) for 3D, or (views, cgroup, coords) when 2D pixel `coords` are given.
     """
@@ -345,7 +345,7 @@ def _visible_points_mask(coords, cgroup, mode, cam_thresh):
     coords: [b, t, n, R] (b == 1). 3D projects world coords with `is_point_visible`; 2D uses
     pixel-bounds (`_vis_2d_bounds`). NaN (dropped/occluded) slots count as not-visible, so a
     point survives as long as it is seen in at least one un-dropped frame. Mirrors the base
-    loader's post-rotation visibility check (PosetailDataset.get_item_actual)."""
+    loader's post-rotation visibility check (TracktailDataset.get_item_actual)."""
     c = coords[0]                                                  # [t, n, R]
     t, n, _ = c.shape
     if mode == '3d':
@@ -448,7 +448,7 @@ def make_triplet(batch, dataset, corruptor_3d, corruptor_2d, cfg):
     # The in-plane rotation (an extrinsic Z-roll about the principal point) can swing an
     # off-centre track fully off-frame; crop_cgroup_to_points clamps its box to [0, size] and
     # cannot recover points at negative pixels, so those points stay invisible. The base loader
-    # (PosetailDataset.get_item_actual) drops such points right after rotating and rejects the
+    # (TracktailDataset.get_item_actual) drops such points right after rotating and rejects the
     # sample if <2 remain -- make_triplet reimplements rotate+crop but skipped that, letting an
     # all-off-frame sample reach get_camera_scale and produce an all-NaN cube_scale (-> NaN loss/
     # grads). Re-filter here: keep only points visible under EVERY view (good & bad share
@@ -502,7 +502,7 @@ def build_corruptors(corruption_cfg):
 # --------------------------------------------------------------------------------------
 
 class ScorerTripletDataset(torch.utils.data.Dataset):
-    """Wraps a `PosetailDataset` so each item is a ready `(good, bad, anchor)` triplet.
+    """Wraps a `TracktailDataset` so each item is a ready `(good, bad, anchor)` triplet.
 
     Building the triplet is CPU-bound (`cv2.warpAffine`, imgaug appearance aug, torch CPU
     ops), so doing it here means it runs inside the DataLoader workers -- pipelined with the

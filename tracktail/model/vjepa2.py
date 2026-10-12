@@ -1,9 +1,9 @@
-# Self-contained VJEPA 2.1 vision-transformer encoder for posetail.
+# Self-contained VJEPA 2.1 vision-transformer encoder for tracktail.
 #
-# This file vendors the encoder half of the VJEPA 2.1 backbone so posetail no
+# This file vendors the encoder half of the VJEPA 2.1 backbone so tracktail no
 # longer depends on the external `vjepa2` / `hub` package. Only the four
 # `vjepa2_1_vit_*_384` builders are exposed, and only the *encoder* is built and
-# loaded (the predictor is discarded by posetail). Weights are downloaded from
+# loaded (the predictor is discarded by tracktail). Weights are downloaded from
 # the same public URLs used by the upstream `hub.backbones` loader.
 #
 # Ported from https://github.com/facebookresearch/vjepa2 (MIT / FB license):
@@ -886,13 +886,13 @@ def _make_vjepa2_1_encoder(
 ):
     """Build the VJEPA 2.1 encoder and (optionally) load pretrained weights.
 
-    posetail discards the predictor, so only the encoder is built here. Weights
+    tracktail discards the predictor, so only the encoder is built here. Weights
     are loaded strict=True (the 2.1 checkpoints have no pos_embed since the model
     uses RoPE) after stripping `module.`/`backbone.` prefixes.
 
     NOTE: upstream never forwards `n_output_distillation` to the encoder -- it only
     parameterizes the (discarded) predictor -- so the encoder always uses its
-    default of 4 hierarchical outputs. posetail relies on this (it sets the scene
+    default of 4 hierarchical outputs. tracktail relies on this (it sets the scene
     embed dim to ``encoder.embed_dim * 4`` in hierarchical mode), so we mirror it
     by not passing `n_output_distillation` here.
     """

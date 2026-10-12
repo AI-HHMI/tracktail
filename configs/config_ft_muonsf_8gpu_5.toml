@@ -28,7 +28,7 @@ cam_thresh_for_vis = 1
 balance_datasets = true
 n_samples_per_dataset = -1
 # Upsample kubric-multiview 5x relative to every other dataset (all others default to 1.0).
-# Multiplies the per-dataset balanced count (see _balance_metadata, posetail_dataset.py:1363);
+# Multiplies the per-dataset balanced count (see _balance_metadata, tracktail_dataset.py:1363);
 # requires balance_datasets = true. weight 1.0/absent = old uniform behavior.
 dataset_weights = { "kubric-multiview" = 5.0 }
 crop_to_points = true

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package an inference-ready posetail checkpoint.
+"""Package an inference-ready tracktail checkpoint.
 
 The training checkpoints contain optimizer state and both raw and schedule-free averaged
 weights. This script keeps only the averaged inference weights and the model constructor
@@ -48,7 +48,7 @@ def _resolve_run_files(run_dir: Path) -> tuple[Path, Path]:
 def _checkpoint_iteration(path: Path) -> int:
     match = _CHECKPOINT_RE.fullmatch(path.name)
     if match is None:
-        raise ValueError(f"Not a posetail checkpoint filename: {path}")
+        raise ValueError(f"Not a tracktail checkpoint filename: {path}")
     return int(match.group(1))
 
 

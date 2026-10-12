@@ -12,8 +12,8 @@ from matplotlib.colors import to_rgb
 
 from aniposelib.cameras import Camera, CameraGroup, FisheyeCamera
 
-from posetail.inference.inference_utils import *
-from posetail.datasets.utils import get_dirs, load_yaml, disassemble_extrinsics
+from tracktail.inference.inference_utils import *
+from tracktail.datasets.utils import get_dirs, load_yaml, disassemble_extrinsics
 
 
 def format_scheme(scheme, keypoint_names):
@@ -55,7 +55,7 @@ def viz_predictions_3d_rerun(coords_pred, coords_true, outpath = None,
     coords_pred = rearrange(coords_pred, 't (s n) r -> s t n r', s = n_subjects)
     coords_true = rearrange(coords_true, 't (s n) r -> s t n r', s = n_subjects)
 
-    rr.init('posetail_vis_3d', spawn = spawn)
+    rr.init('tracktail_vis_3d', spawn = spawn)
 
     for i in range(T):
 

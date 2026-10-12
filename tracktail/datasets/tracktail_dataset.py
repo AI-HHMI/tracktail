@@ -12,10 +12,10 @@ from aniposelib.cameras import CameraGroup, Camera
 from easydict import EasyDict as edict
 from einops import rearrange
 
-from posetail.datasets.utils import get_dirs, load_yaml, disassemble_extrinsics, format_sample_input
+from tracktail.datasets.utils import get_dirs, load_yaml, disassemble_extrinsics, format_sample_input
 
-from posetail.posetail.cube import project_points_torch, is_point_visible, get_camera_scale
-from posetail.posetail.train_utils import format_camera_group, dict_to_device
+from tracktail.model.cube import project_points_torch, is_point_visible, get_camera_scale
+from tracktail.model.train_utils import format_camera_group, dict_to_device
 
 from pprint import pprint
 
@@ -475,7 +475,7 @@ def custom_collate(batch):
 
     if any(sample is None for sample in batch):
         raise RuntimeError(
-            'PosetailDataset returned no valid sample after exhausting its retries; '
+            'TracktailDataset returned no valid sample after exhausting its retries; '
             'see the "[data]" warnings above for which datasets are being rejected.')
 
     batch = list(zip(*batch))
@@ -539,7 +539,7 @@ def custom_collate(batch):
 class StepDistributedSampler(DistributedSampler):
     """DistributedSampler yielding ((seed, step), index).
 
-    `step` is the same on every rank, so PosetailDataset draws the per-step camera count
+    `step` is the same on every rank, so TracktailDataset draws the per-step camera count
     and 2D-only coin from it: a DDP step waits for the slowest rank, and matching those
     draws keeps ranks similarly expensive. Everything else stays independent per rank.
     """
@@ -556,7 +556,7 @@ def validation_collate(batch):
     return custom_collate(batch)
 
 
-class PosetailDataset(Dataset): 
+class TracktailDataset(Dataset): 
 
     def __init__(self, config, split): 
 

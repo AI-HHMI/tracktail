@@ -45,9 +45,9 @@ import numpy as np
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from posetail.inference.inference_utils import (                         # noqa: E402
+from tracktail.inference.inference_utils import (                         # noqa: E402
     load_model_from_base_folder, run_inference, load_camera_group_from_metadata)
-from posetail.posetail.eval_metrics import (                             # noqa: E402
+from tracktail.model.eval_metrics import (                             # noqa: E402
     get_eval_metrics,
     compute_cam_depths,
     get_delta_x_avg_depth_relative,

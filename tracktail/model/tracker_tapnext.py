@@ -26,14 +26,14 @@ import torch.nn.functional as F
 
 from einops import rearrange, einsum, repeat
 
-from posetail.posetail.cube import get_camera_scale, from_homogeneous, to_homogeneous
-from posetail.posetail.cube import undistort_points, triangulate_simple_batch, project_points_torch
-from posetail.posetail.cube import points_to_rays, _invert_SE3
-from posetail.posetail.cube import CameraSelfAttention, is_point_visible
-from posetail.posetail.cube import signed_log1p, signed_expm1
-from posetail.posetail.cube import noisy_or_logit
-from posetail.posetail.utils import PadToSize, count_parameters, get_fourier_encoding
-from posetail.posetail.tapnext import TapNextBackbone
+from tracktail.model.cube import get_camera_scale, from_homogeneous, to_homogeneous
+from tracktail.model.cube import undistort_points, triangulate_simple_batch, project_points_torch
+from tracktail.model.cube import points_to_rays, _invert_SE3
+from tracktail.model.cube import CameraSelfAttention, is_point_visible
+from tracktail.model.cube import signed_log1p, signed_expm1
+from tracktail.model.cube import noisy_or_logit
+from tracktail.model.utils import PadToSize, count_parameters, get_fourier_encoding
+from tracktail.model.tapnext import TapNextBackbone
 
 
 class TrackerTapNext(nn.Module):

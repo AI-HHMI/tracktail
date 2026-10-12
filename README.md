@@ -1,6 +1,6 @@
 # Tracktail
 
-<!-- OUTLINE DRAFT — sections marked TODO still need content. Python package / PyPI name: `posetail`. -->
+<!-- OUTLINE DRAFT — sections marked TODO still need content. Python package / PyPI name: `tracktail`. -->
 
 **Multi-view 3D point tracking without depth input.** You give Tracktail synchronized videos from
 calibrated cameras and a set of 3D query points. It returns each point's 3D trajectory and
@@ -39,7 +39,7 @@ pixi install            # Python 3.11, CUDA 12.8 PyTorch, all deps
 pixi shell              # or prefix commands with `pixi run`
 ```
 
-Library only, without the server: `pip install posetail`. You need to install PyTorch yourself.
+Library only, without the server: `pip install tracktail`. You need to install PyTorch yourself.
 <!-- TODO: GPU / VRAM requirements; CPU works but is slow -->
 
 ## Quick start: inference server
@@ -134,8 +134,8 @@ Takes a full trajectory `coords` (T,K,3) plus the same cameras and images. Retur
 ## Python API
 
 ```python
-from posetail.posetail.tracker_encoder import TrackerEncoder
-from posetail.inference.inference_utils import (
+from tracktail.model.tracker_encoder import TrackerEncoder
+from tracktail.inference.inference_utils import (
     load_camera_group_from_metadata, run_tracker_encoder_on_videos, run_inference)
 
 model = TrackerEncoder.from_pretrained("ai-hhmi/posetail-static-animal", revision="2026-08-24")
@@ -193,7 +193,7 @@ The server processes one clip per request. For longer videos you have two option
 - `scripts/viz3d.py`: 3D viewer built on [rerun](https://rerun.io). It's a function library,
   so import it in a notebook.
 - `scripts/inference_metrics.py`: computes AJ, δ_avg, OA and MTE using
-  `posetail.posetail.eval_metrics`.
+  `tracktail.model.eval_metrics`.
 - `cotracker_baseline/`: per-view CoTracker3 followed by triangulation, used as a paper
   baseline. It needs the `cotracker` package installed separately.
 
@@ -221,7 +221,7 @@ The server processes one clip per request. For longer videos you have two option
 
 ### Configs
 - Pretrain: `configs/<TODO pretrain-v6>.toml`.
-- Finetune: `configs/config_posetail_finetuning_v6.toml`.
+- Finetune: `configs/config_tracktail_finetuning_v6.toml`.
 - Scorer: `configs/config_scorer.toml`.
 <!-- TODO: move stale configs to configs/archive/; commit the pretrain-v6 config -->
 
@@ -231,7 +231,7 @@ across all GPUs**.
 
 ### Launching
 ```bash
-pixi run python train.py --config-path configs/config_posetail_finetuning_v6.toml \
+pixi run python train.py --config-path configs/config_tracktail_finetuning_v6.toml \
     --devices -1 --strategy ddp_find_unused_parameters_true      # Lightning Fabric DDP
 # LSF cluster: cluster/big_bsub_{pretraining,finetuning}.sh -> cluster/train_script.sh
 ```
@@ -249,9 +249,9 @@ revision. <!-- TODO: script the upload -->
 
 ## Repository layout
 ```
-posetail/posetail/   model (tracker_encoder.py, encoder_decoder.py, vjepa2.py, cube.py), losses, metrics, train_utils
-posetail/datasets/   training (posetail_dataset.py) and inference datasets, scorer corruptions
-posetail/inference/  inference_utils.py (loading, windowed tracking, trial I/O)
+tracktail/model/      model (tracker_encoder.py, encoder_decoder.py, vjepa2.py, cube.py), losses, metrics, train_utils
+tracktail/datasets/   training (tracktail_dataset.py) and inference datasets, scorer corruptions
+tracktail/inference/  inference_utils.py (loading, windowed tracking, trial I/O)
 server/              FastAPI inference server + example client
 scripts/             inference / rendering / metrics / packaging CLIs
 configs/             training configs (TOML)

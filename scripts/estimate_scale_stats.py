@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Estimate per-dataset coordinate / camera-scale statistics for posetail datasets.
+"""Estimate per-dataset coordinate / camera-scale statistics for tracktail datasets.
 
 Motivation
 ----------
@@ -22,7 +22,7 @@ What it does
   ``max(min_crop_dim, w, h)``) then ``resize`` to ``image_size`` (focal *= scale).
   ``cube_scale`` is then the repo's ``get_camera_scale`` on those final cameras.
 * Bounded, image-free file-walk over ``root/<dataset>/<split>/<session>/<trial>``
-  (the nesting ``PosetailDataset._generate_metadata`` assumes), sampling a few
+  (the nesting ``TracktailDataset._generate_metadata`` assumes), sampling a few
   trials per dataset. Fast even for huge datasets (kubric) — never enters ``img/``.
 
 Reported scales (median magnitude a head must output if its raw output were O(1))
@@ -53,8 +53,8 @@ import torch
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
-from posetail.posetail.cube import get_camera_scale, project_cam, to_homogeneous  # noqa: E402
-from posetail.datasets.utils import get_dirs, load_yaml  # noqa: E402
+from tracktail.model.cube import get_camera_scale, project_cam, to_homogeneous  # noqa: E402
+from tracktail.datasets.utils import get_dirs, load_yaml  # noqa: E402
 
 
 def _mat(x, shape):
@@ -136,7 +136,7 @@ def project_px(cam, P3):
 
 
 def crop_resize_cams(cams, pts, image_size, min_crop_dim, pad=20.0):
-    """Apply crop_to_points + resize-to-image_size, mirroring PosetailDataset.
+    """Apply crop_to_points + resize-to-image_size, mirroring TracktailDataset.
 
     crop_cgroup_to_points: bbox of projected points +/- pad px, squared to
     max(min_crop_dim, w, h) and capped at the image size (changes offset/size,

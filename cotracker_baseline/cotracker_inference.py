@@ -43,9 +43,9 @@ from tqdm import tqdm
 from cotracker.predictor import CoTrackerPredictor
 
 # -- reuse helpers from your existing pipeline ---------------------------
-from posetail.datasets.utils import get_dirs
-from posetail.posetail.cube import project_points_torch
-from posetail.inference.inference_utils import (
+from tracktail.datasets.utils import get_dirs
+from tracktail.model.cube import project_points_torch
+from tracktail.inference.inference_utils import (
     load_camera_group_from_metadata,   # returns formatted list-of-dicts
     build_video_readers,
     load_multiview_clip,

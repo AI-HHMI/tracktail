@@ -1,10 +1,10 @@
-"""Native TAPNext++ backbone building blocks for posetail.
+"""Native TAPNext++ backbone building blocks for tracktail.
 
 This mirrors how ``encoder_decoder.py`` holds the building blocks
 (``SceneRepresentation``/``QueryEncoder``/``Decoder``) imported by
 ``tracker_encoder.py``: here we re-implement DeepMind's TAPNext (the recurrent
 TRecViT point tracker, https://arxiv.org/abs/2412.14294) natively inside
-posetail. Only the top-level multi-camera 3D model ``TrackerTapNext`` lives in
+tracktail. Only the top-level multi-camera 3D model ``TrackerTapNext`` lives in
 ``tracker_tapnext.py``; everything it needs from the backbone is here.
 
 Parameter *names and shapes are kept identical to the upstream ``TAPNext``
@@ -24,7 +24,7 @@ from torch import nn
 from torch.nn import functional as F
 from torchvision.models import vision_transformer
 
-from posetail.posetail import tapnext_lru_modules
+from tracktail.model import tapnext_lru_modules
 
 
 def posemb_sincos_2d(h, w, width, temperature=10_000.0, dtype=np.float32):

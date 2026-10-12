@@ -17,15 +17,15 @@ from torch.utils.data import Dataset, IterableDataset
 from datetime import datetime, timezone, timedelta
 from easydict import EasyDict
 
-# from posetail.datasets.datasets import Rat7mIterableDataset
-from posetail.datasets.utils import safe_make
-from posetail.posetail.cube import get_camera_scale
-from posetail.posetail.eval_metrics import get_eval_metrics, get_metrics_by_motion, get_direct_depth_metrics
-from posetail.posetail.cube import get_camera_scale
-from posetail.posetail.losses import get_vis_true, unroll_batch, normalize_by_mean_depth
-from posetail.posetail.tracker import Tracker
-from posetail.posetail.tracker_encoder import TrackerEncoder
-from posetail.posetail.tracker_tapnext import TrackerTapNext
+# from tracktail.datasets.datasets import Rat7mIterableDataset
+from tracktail.datasets.utils import safe_make
+from tracktail.model.cube import get_camera_scale
+from tracktail.model.eval_metrics import get_eval_metrics, get_metrics_by_motion, get_direct_depth_metrics
+from tracktail.model.cube import get_camera_scale
+from tracktail.model.losses import get_vis_true, unroll_batch, normalize_by_mean_depth
+from tracktail.model.tracker import Tracker
+from tracktail.model.tracker_encoder import TrackerEncoder
+from tracktail.model.tracker_tapnext import TrackerTapNext
 
 from schedulefree import AdamWScheduleFree
 
@@ -72,7 +72,7 @@ def make_worker_init_fn(base_seed, rank):
 
     On `fork` (Linux default) every dataloader worker inherits the parent process's
     numpy RNG state verbatim; PyTorch auto-reseeds torch/`random` per worker but NOT
-    numpy. Since PosetailDataset drives ~all of its sampling/augmentation through
+    numpy. Since TracktailDataset drives ~all of its sampling/augmentation through
     `np.random.*`, workers would otherwise emit correlated draws. Worse under DDP:
     every rank runs `set_seeds` with the same broadcast seed, and torch's per-worker
     seed (`torch.initial_seed()+worker_id`) is rank-independent, so even torch draws

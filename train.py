@@ -41,13 +41,13 @@ from torch.utils.data import DataLoader, DistributedSampler
 
 from lightning.fabric import Fabric
 
-from posetail.datasets.posetail_dataset import PosetailDataset, StepDistributedSampler, custom_collate, validation_collate
-from posetail.posetail.losses import *
-from posetail.posetail.tracker import Tracker
-from posetail.posetail.tracker_encoder import TrackerEncoder
-from posetail.posetail.tracker_tapnext import TrackerTapNext
-from posetail.posetail.train_utils import *
-from posetail.posetail.train_utils import _warn_unfilled_video_encoder
+from tracktail.datasets.tracktail_dataset import TracktailDataset, StepDistributedSampler, custom_collate, validation_collate
+from tracktail.model.losses import *
+from tracktail.model.tracker import Tracker
+from tracktail.model.tracker_encoder import TrackerEncoder
+from tracktail.model.tracker_tapnext import TrackerTapNext
+from tracktail.model.train_utils import *
+from tracktail.model.train_utils import _warn_unfilled_video_encoder
 
 from schedulefree import AdamWScheduleFree
 
@@ -128,7 +128,7 @@ def run(config_path, fabric):
     signal.signal(signal.SIGINT, signal_handler)
 
     # set up training dataloader
-    train_dataset = PosetailDataset(config, split = 'train')
+    train_dataset = TracktailDataset(config, split = 'train')
 
     sampler = StepDistributedSampler(
         train_dataset,
@@ -166,7 +166,7 @@ def run(config_path, fabric):
 
     if val: 
 
-        val_dataset = PosetailDataset(config, split = 'val')
+        val_dataset = TracktailDataset(config, split = 'val')
 
         val_loader = DataLoader(
             val_dataset,
@@ -257,7 +257,7 @@ def run(config_path, fabric):
         # query-encoder + the kubric-critical patch_embed[5D]/pos_embed[3D], which aren't 2D anyway).
         # match_rms_adamw scaling makes Muon REUSE the AdamW lr. Two optimizers wrapped as one.
         from torch.optim import Muon as TorchMuon
-        from posetail.posetail.muon import DualOptimizer
+        from tracktail.model.muon import DualOptimizer
         adj = config.training.optimizer.get('muon_adjust_lr_fn', 'match_rms_adamw')
         muon_scale = config.training.optimizer.get('muon_lr_scale', 1.0)
         wd = config.training.optimizer.weight_decay

@@ -27,12 +27,12 @@ from fastapi.responses import Response
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from posetail.inference.inference_utils import (load_model_from_base_folder,
+from tracktail.inference.inference_utils import (load_model_from_base_folder,
                              load_model_from_hub, resize_camera_group,
                              resolve_config_and_checkpoint)
-from posetail.posetail.scorer_encoder import ScorerEncoder
-from posetail.posetail.tracker_encoder import TrackerEncoder
-from posetail.posetail.train_utils import load_checkpoint, load_config, _warn_unfilled_video_encoder
+from tracktail.model.scorer_encoder import ScorerEncoder
+from tracktail.model.tracker_encoder import TrackerEncoder
+from tracktail.model.train_utils import load_checkpoint, load_config, _warn_unfilled_video_encoder
 
 _gpu_lock = asyncio.Lock()
 DEFAULT_HF_REPO = 'ai-hhmi/posetail-static-animal'
@@ -277,7 +277,7 @@ async def _parse_scene_request(meta, images, device, image_size):
     # Record per-camera scale factors before resize so we can un-scale 2d_pred later
     scales = [float(image_size) / max(cam['size'].tolist()) for cam in camera_group]
 
-    # Scale so max(H,W) == image_size, matching PosetailDataset / inference_video
+    # Scale so max(H,W) == image_size, matching TracktailDataset / inference_video
     camera_group = resize_camera_group(camera_group, image_size)
 
     # Infer the clip length from the uploaded frames. The encoders resize their temporal

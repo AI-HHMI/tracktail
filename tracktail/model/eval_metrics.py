@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from posetail.posetail.losses import get_vis_true
+from tracktail.model.losses import get_vis_true
 
 
 def get_direct_depth_metrics(pred_cams_direct, tri_pred, rays_c, coords_true,
@@ -27,7 +27,7 @@ def get_direct_depth_metrics(pred_cams_direct, tri_pred, rays_c, coords_true,
             or coords_true.shape[-1] != 3):
         return out
 
-    from posetail.posetail.cube import to_homogeneous, from_homogeneous, is_point_visible
+    from tracktail.model.cube import to_homogeneous, from_homogeneous, is_point_visible
 
     with torch.no_grad():
         # float64: far rigs (johnson-fly ~6.5e5 units) make these ray-local einsums form ~6.5e5 coords

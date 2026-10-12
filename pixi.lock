@@ -7847,7 +7847,7 @@ packages:
   size: 24190
   timestamp: 1779159948016
 - pypi: ./
-  name: posetail
+  name: tracktail
   requires_dist:
   - aniposelib>=0.7.0
   - easydict==1.13

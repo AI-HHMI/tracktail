@@ -40,9 +40,9 @@ import torch
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
-from posetail.posetail.cube import (get_camera_scale, points_to_rays,  # noqa: E402
+from tracktail.model.cube import (get_camera_scale, points_to_rays,  # noqa: E402
                                     to_homogeneous, from_homogeneous)
-from posetail.datasets.utils import get_dirs, load_yaml  # noqa: E402
+from tracktail.datasets.utils import get_dirs, load_yaml  # noqa: E402
 from scripts.estimate_scale_stats import (candidate_pool, _load_traj, _flat_pts,  # noqa: E402
                                           crop_resize_cams, build_cams)
 

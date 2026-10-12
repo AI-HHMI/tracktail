@@ -142,7 +142,7 @@ Runs one forward pass and returns all model outputs.
   3. Send those positions as the next window's `coords`, with `query_times` set to 0.
 
   The offline pipeline (`run_tracker_encoder_on_videos` in
-  `posetail/inference/inference_utils.py`, used by `scripts/inference_video.py`) does this
+  `tracktail/inference/inference_utils.py`, used by `scripts/inference_video.py`) does this
   windowing automatically, and also moves the crop with the subject.
 
 **Response** `200 application/octet-stream` — a NumPy `.npz` archive (filename `predictions.npz`).

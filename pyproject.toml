@@ -3,7 +3,7 @@ requires = ["setuptools>=64,<81", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "posetail"
+name = "tracktail"
 version = "0.4.2"
 dependencies = [
     "aniposelib>=0.7.0",
@@ -23,7 +23,7 @@ dependencies = [
     "requests>=2.31", "huggingface_hub>=0.30",
     ]
 requires-python = ">=3.11"
-description = "a model for tracking 2d or 3d animal pose through time"
+description = "Multi-view 3D point tracking without depth input"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
 keywords = ["3d point tracking", "2d point tracking", "multi-view tracking", "pose estimation"]
@@ -35,7 +35,7 @@ classifiers = [
 ]
 
 # [project.optional-dependencies]
-# Backbones for the legacy Tracker network (posetail.posetail.tracker.Tracker),
+# Backbones for the legacy Tracker network (tracktail.model.tracker.Tracker),
 # which is no longer used by the default TrackerEncoder/ScorerEncoder path. Only
 # needed if you build the old sam2/hiera-based feature extractors.
 #
@@ -49,11 +49,11 @@ classifiers = [
 # ]
 
 [project.urls]
-Repository = "https://github.com/AllenNeuralDynamics/posetail"
+Repository = "https://github.com/AI-HHMI/tracktail"
 
 [tool.setuptools]
-# `posetail` (a real package via posetail/__init__.py) plus its subpackages — including
-# `posetail.posetail` (with train_utils) and `posetail.inference` (with inference_utils) —
+# `tracktail` (a real package via tracktail/__init__.py) plus its subpackages — including
+# `tracktail.model` (with train_utils) and `tracktail.inference` (with inference_utils) —
 # are discovered by setup.py's find_packages(). No top-level root modules to expose anymore.
 
 
@@ -62,7 +62,7 @@ channels = ["conda-forge"]
 platforms = [{ name = "linux-64-glibc-2-34", platform = "linux-64", glibc = "2.34" }]
 
 [tool.pixi.pypi-dependencies]
-posetail = { path = ".", editable = true }
+tracktail = { path = ".", editable = true }
 torch = { version = "<3", index="https://download.pytorch.org/whl/cu128"}
 torchvision = {version ="*", index="https://download.pytorch.org/whl/cu128"}
 torchaudio = {version ="*", index="https://download.pytorch.org/whl/cu128"}
