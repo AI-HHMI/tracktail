@@ -15,8 +15,8 @@ MODE=${1:-}      # number of cameras, "canonical", or empty (all)
 POSE_FILE=${2:-pose3d.npz}
 DATASET_ROOT=/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6
 CKPT=/home/ruppk2@hhmi.org/software/cotracker-weights/scaled_offline.pth
-DATASETS="kubric-multiview dex_ycb cmupanoptic_3dgs tapvid3d_adt tapvid3d_drivetrack tapvid3d_pstudio"
-# DATASETS="po-animal-sub256-motion point-odyssey-human"
+# DATASETS="kubric-multiview dex_ycb cmupanoptic_3dgs tapvid3d_adt tapvid3d_drivetrack tapvid3d_pstudio"
+DATASETS="po-animal-sub256-motion point-odyssey-human"
 
 if [[ "$MODE" == "canonical" ]]; then
     NCAMS_LABEL="canonical"
@@ -29,7 +29,7 @@ else
     N_VIEWS_ARG=""
 fi
 
-OUTPUT_ROOT=/groups/karashchuk/home/ruppk2/results/paper-final/cotracker-outputs/paper-${NCAMS_LABEL}
+OUTPUT_ROOT=/groups/karashchuk/home/ruppk2/results/paper-final-v2/cotracker-outputs/paper-${NCAMS_LABEL}
 
 # run inference on cotracker baseline (predict individually on each camera view)
 # inference always runs on all cameras — view selection happens at triangulation

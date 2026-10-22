@@ -1157,7 +1157,7 @@ def occlusion_at_query(vis_used_s, query_time_valid, valid_mask, start_frame):
 
 
 def load_trial(trial_path, start_frame=0, n_frames=None, query_first=True,
-               max_points=None, seed=0, pose_file=None):
+               max_points=None, seed=0, pose_file=None, cam_names_filter=None):
     """Load metadata, video/image paths, and query points from a trial directory,
     following the TracktailDataset convention.
 
@@ -1168,6 +1168,7 @@ def load_trial(trial_path, start_frame=0, n_frames=None, query_first=True,
 
     query_first (3D only): anchor each point at its first valid+visible frame (mvtracker /
     training convention) instead of all points at start_frame. Returns per-point query_times.
+    With cam_names_filter, visible means visible in at least one of those cameras (default: any camera of the file).
 
     max_points (per subject): if set and a subject has more than this many valid query points,
     randomly subsample its valid mask down to max_points (seeded by `seed`). This genuinely
@@ -1249,6 +1250,19 @@ def load_trial(trial_path, start_frame=0, n_frames=None, query_first=True,
     # query_first is 3D-only (needs vis to define first-visible frame); 2D falls back.
     use_query_first = query_first and mode == '3d'
 
+    # visibility that defines the first visible frame: only the cameras that are used, when they are given
+    vis_query = vis_gt
+    if use_query_first and cam_names_filter is not None and vis_gt is not None:
+        missing = [n for n in cam_names_filter if n not in cam_names]
+        if missing:
+            raise ValueError(f'Requested cameras not in trial: {missing}')
+        if vis_gt.shape[-1] != len(cam_names):
+            # e.g. the 31 vis columns of the standard panoptic pose3d.npz (by camera id) for 27 cameras
+            print(f'[warn] {pose_path}: vis has {vis_gt.shape[-1]} columns but the trial has {len(cam_names)} cameras; '
+                  f'the vis columns cannot be matched to the cameras in use, query frames use all of them')
+        else:
+            vis_query = vis_gt[..., [cam_names.index(n) for n in cam_names_filter]]
+
     per_subject_queries = []
     per_subject_valid_masks = []
     per_subject_query_times = []
@@ -1256,7 +1270,7 @@ def load_trial(trial_path, start_frame=0, n_frames=None, query_first=True,
     for s in range(n_subjects):
         if use_query_first:
             qt_s, qc_s, valid = compute_query_first(
-                coords[s], vis_gt[s] if vis_gt is not None else None, start_frame, n_frames)
+                coords[s], vis_query[s] if vis_query is not None else None, start_frame, n_frames)
         else:
             qc_s = coords[:, start_frame, :, :][s]              # (n_kpts, R)
             valid = np.all(np.isfinite(qc_s), axis=1)
@@ -1341,7 +1355,7 @@ def run_inference(
 
     trial = load_trial(trial_path, start_frame=start_frame, n_frames=n_frames,
                        query_first=query_first, max_points=max_points, seed=seed,
-                       pose_file=pose_file)
+                       pose_file=pose_file, cam_names_filter=cam_names_filter)
     mode                    = trial['mode']
     metadata_path           = trial['metadata_path']
     cam_names               = trial['cam_names']

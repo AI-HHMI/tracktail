@@ -29,6 +29,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from tracktail.model.eval_metrics import get_eval_metrics
+from tracktail.model.eval_metrics_paper import PAPER_MOVEMENT_THRESHOLDS, get_eval_metrics_paper
 
 
 # Per-dataset default thresholds (already divided to the correct scale).
@@ -40,6 +41,14 @@ DATASET_THRESHOLDS = {
     'cmupanoptic_3dgs':         [x / 100 for x in [5, 10, 20, 40]],
     'point-odyssey-human':      [0.30, 0.60, 1.20, 2.40, 4.80],
     'po-animal-sub256-motion':  [0.30, 0.60, 1.20, 2.40, 4.80],
+}
+
+
+# failure distance of the survival rate under the paper protocol (as in the MVTracker evaluator)
+DATASET_SURVIVAL = {
+    'kubric-multiview':  0.5,
+    'dex_ycb':           0.1,
+    'cmupanoptic_3dgs':  1.0,
 }
 
 
@@ -55,8 +64,12 @@ def parse_args():
                         help='Split name (default: test)')
     parser.add_argument('--thresholds', nargs='+', type=float, default=None,
                         help='Distance thresholds for delta_x / jaccard')
-    parser.add_argument('--survival-threshold', type=float, default=50,
-                        help='L2 failure threshold for survival rate (default: 50)')
+    parser.add_argument('--legacy-metrics', action='store_true',
+                        help='score with get_eval_metrics (pooled over all points, all frames) instead of the '
+                             'default paper-protocol metrics (get_eval_metrics_paper)')
+    parser.add_argument('--survival-threshold', type=float, default=None,
+                        help='L2 failure threshold for survival rate (default: the dataset value of the paper '
+                             'protocol, 50 with --legacy-metrics)')
     parser.add_argument('--prefix', type=str, default='cotracker_',
                         help='Metric key prefix (default: cotracker_)')
     parser.add_argument('--pose-file', type=str, default=None,
@@ -147,7 +160,7 @@ def _cam_indices_from_metadata(metadata_path, cam_names_used):
     return [all_names.index(n) for n in cam_names_used]
 
 
-def run_trial(pred_path, pose_path, thresholds, survival_threshold, prefix):
+def run_trial(pred_path, pose_path, thresholds, survival_threshold, prefix, dataset_name = None, legacy = False):
     pred = np.load(pred_path)
 
     coords_3d     = pred['coords_3d']      # (T, N, 3)
@@ -169,10 +182,29 @@ def run_trial(pred_path, pose_path, thresholds, survival_threshold, prefix):
     finite_mask = np.isfinite(coords_3d).all(axis=-1)  # (T, N)
     visibility  = visibility & finite_mask
 
+    if not legacy:
+        # paper protocol (tracktail/model/eval_metrics_paper.py): per track, query frame and earlier frames not
+        # evaluated, static/dynamic mean on kubric / dex_ycb. outputs without query_times were queried at frame 0.
+        # frames where the triangulation failed (nan coords) have no prediction and are left out of the evaluation
+        coords_true_np, vis_true_np = load_ground_truth(
+            pose_path, frame_numbers, valid_mask, cam_indices=cam_indices)
+        query_times = pred['query_times'] if 'query_times' in pred.files else np.zeros(coords_3d.shape[1], dtype=int)
+        vis_pred_np = np.where(visibility, 10.0, -10.0).astype(np.float32)[np.newaxis, :, :, np.newaxis]
+        return get_eval_metrics_paper(
+            coords_pred=coords_3d[np.newaxis].astype(np.float32),
+            coords_true=coords_true_np,
+            vis_pred=vis_pred_np,
+            vis_true=vis_true_np,
+            query_times=query_times,
+            thresholds=thresholds,
+            survival_threshold=survival_threshold,
+            movement_thresholds=PAPER_MOVEMENT_THRESHOLDS.get(dataset_name),
+            prefix=prefix,
+        )
+
     # Replace NaN coords with 0 so np.median inside get_eval_metrics never
     # sees a NaN (masked-out points won't contribute to any metric anyway).
     coords_3d = np.where(finite_mask[:, :, np.newaxis], coords_3d, 0.0)
-
     coords_pred = torch.from_numpy(
         coords_3d[np.newaxis].astype(np.float32)                       # (1, T, N, 3)
     )
@@ -227,8 +259,12 @@ def main():
                        f'— using get_eval_metrics defaults. '
                        f'Add it to DATASET_THRESHOLDS or pass --thresholds explicitly.')
 
+        # eval_metrics.npz of the other metric definition is recomputed (the paper metrics have an 'ate' entry)
+        reuse = False
         if metrics_out.exists() and not args.force:
             existing = np.load(metrics_out, allow_pickle=True)
+            reuse = (f'{args.prefix}ate' in existing.files) != args.legacy_metrics
+        if reuse:
             metrics  = {k: float(existing[k]) for k in existing.files}
             n_skipped += 1
         else:
@@ -246,8 +282,11 @@ def main():
                     pred_path=pred_path,
                     pose_path=pose_path,
                     thresholds=thresholds,
-                    survival_threshold=args.survival_threshold,
+                    survival_threshold=(args.survival_threshold if args.survival_threshold is not None
+                                        else 50 if args.legacy_metrics else DATASET_SURVIVAL.get(dataset_name, 50)),
                     prefix=args.prefix,
+                    dataset_name=dataset_name,
+                    legacy=args.legacy_metrics,
                 )
                 np.savez(metrics_out, **{k: np.array(v) for k, v in metrics.items()})
                 n_computed += 1

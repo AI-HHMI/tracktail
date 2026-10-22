@@ -47,6 +47,10 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tracktail.inference.inference_utils import (                         # noqa: E402
     load_model_from_base_folder, run_inference, load_camera_group_from_metadata)
+from tracktail.model.eval_metrics_paper import (                       # noqa: E402
+    PAPER_MOVEMENT_THRESHOLDS,
+    get_eval_metrics_paper,
+)
 from tracktail.model.eval_metrics import (                             # noqa: E402
     get_eval_metrics,
     compute_cam_depths,
@@ -93,7 +97,9 @@ SETTINGS = {
                                n_views=None, max_kpts=2500),
 }
 METRIC_KEYS = ['mte', 'mpjpe', 'delta_x_avg', 'survival_rate', 'occlusion_acc',
-               'occlusion_acc_percam', 'avg_jaccard', 'l1']
+               'occlusion_acc_percam', 'avg_jaccard', 'l1']        # --legacy-metrics
+# default: the metrics as the paper reports them (tracktail/model/eval_metrics_paper.py)
+PAPER_METRIC_KEYS = ['mte', 'ate', 'delta_x_avg', 'survival_rate', 'occlusion_acc', 'avg_jaccard']
 
 # TAPVid-3D depth-relative metric config (cam-coord and world-coord).
 # Thresholds from the TAPVid-3D supplemental; a point passes when dist/Z_depth < threshold.
@@ -274,6 +280,33 @@ def eval_outputs(out, thresholds, survival):
     return m
 
 
+def eval_outputs_paper(out, dataset, thresholds, survival):
+    '''
+    the paper-protocol metrics (get_eval_metrics_paper) from a predictions dict or npz: per track, query
+    frame and earlier frames not evaluated, and for the datasets in PAPER_MOVEMENT_THRESHOLDS the mean of the
+    static and the dynamic tracks. returns the headline score under the usual keys plus the per-group scores
+    '''
+    keys = set(out.files) if hasattr(out, 'files') else set(out)
+    cp = np.asarray(out['coords_pred'])
+    ct = np.asarray(out['coords_true'])
+    vp = np.asarray(out['vis_pred'])
+    qt = np.asarray(out['query_times']) if 'query_times' in keys else None
+
+    # global GT visibility: visible in any of the cameras actually used (see eval_outputs)
+    if 'vis_true_cams' in keys:
+        vt = _vis_true_from_cams(np.asarray(out['vis_true_cams']))
+    else:
+        vt = np.asarray(out['vis_true']).astype(bool)
+    vt = vt & np.isfinite(ct).all(axis=-1, keepdims=True)
+
+    m = get_eval_metrics_paper(cp, ct, vp, vt, query_times=qt, thresholds=thresholds,
+                               survival_threshold=survival,
+                               movement_thresholds=PAPER_MOVEMENT_THRESHOLDS.get(dataset))
+    m['n_kpts'] = int(cp.shape[2])
+    m['n_late_query'] = int((qt > 0).sum()) if qt is not None else 0
+    return m
+
+
 def fmt_dur(seconds):
     s = int(round(seconds)); h, r = divmod(s, 3600); m, sec = divmod(r, 60)
     return f'{h}:{m:02d}:{sec:02d}' if h else f'{m}:{sec:02d}'
@@ -284,10 +317,13 @@ def write_report(all_summary, out_dir):
     with open(os.path.join(out_dir, 'summary.json'), 'w') as f:
         json.dump(all_summary, f, indent=2)
 
+    # paper-protocol summaries (they have an ate entry) and --legacy-metrics ones list different metrics
+    report_keys = PAPER_METRIC_KEYS if any('ate_mean' in s for s in all_summary.values()) else METRIC_KEYS
+
     def table(agg):
         # include l1_world as an optional extra column when present for any dataset
         extra = ['l1_world'] if any(f'l1_world_{agg}' in s for s in all_summary.values()) else []
-        all_keys = METRIC_KEYS + extra
+        all_keys = report_keys + extra
         L = ['| dataset | #tr | ' + ' | '.join(k.replace('_', '-') for k in all_keys) + ' |',
              '|---|---|' + '---|' * len(all_keys)]
         for ds, s in all_summary.items():
@@ -324,8 +360,11 @@ def write_report(all_summary, out_dir):
         cfg_rows.append(f'| {ds} | {n_views if n_views is not None else "all"} | {s.get("view_seed", 0)} |')
 
     md = ['# Test-set error metrics (query-first)', '',
-          'Per-point first-visible query anchoring; pre-query + non-finite GT masked. Metrics via '
-          '`get_eval_metrics`, aggregated over test trials.', '',
+          ('Metrics via `get_eval_metrics_paper` (the paper protocol: per track, query frame and earlier frames '
+           'not evaluated, mean of the static and dynamic tracks on kubric / dex_ycb), aggregated over test trials.'
+           if report_keys is PAPER_METRIC_KEYS else
+           'Per-point first-visible query anchoring; pre-query + non-finite GT masked. Metrics via '
+           '`get_eval_metrics`, aggregated over test trials.'), '',
           '## Camera sampling config', '', '\n'.join(cfg_rows), '',
           '## Mean over trials', '', table('mean'), '',
           '## Median over trials', '', table('median'), '',
@@ -388,6 +427,9 @@ def main():
                          'frames, so a smaller value re-crops more often for very fast subjects')
     ap.add_argument('--no-motion-margin', dest='motion_margin', action='store_false', default=True,
                     help='disable the causal motion-margin crop expansion (default ON)')
+    ap.add_argument('--legacy-metrics', action='store_true',
+                    help='score with get_eval_metrics (pooled over all points) instead of the default paper-protocol '
+                         'metrics (get_eval_metrics_paper: per track, query frame excluded, static/dynamic mean)')
     ap.add_argument('--device', default='cuda:0')
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
@@ -445,7 +487,8 @@ def main():
         try:
             if w['cached']:
                 with np.load(w['npz'], allow_pickle=True) as data:
-                    m = eval_outputs(data, cfg['thresholds'], cfg['survival'])
+                    m = (eval_outputs(data, cfg['thresholds'], cfg['survival']) if args.legacy_metrics
+                         else eval_outputs_paper(data, ds, cfg['thresholds'], cfg['survival']))
                     if ds in TAPVID3D_DATASETS:
                         m.update(eval_outputs_cam(data, w['tp'], ds))
                     if ds in TAPVID2D_DATASETS:
@@ -466,7 +509,8 @@ def main():
                     motion_margin=args.motion_margin, cam_names_filter=w['cam_names'],
                     pose_file=args.pose_file)
                 torch.cuda.empty_cache()
-                m = eval_outputs(out, cfg['thresholds'], cfg['survival'])
+                m = (eval_outputs(out, cfg['thresholds'], cfg['survival']) if args.legacy_metrics
+                     else eval_outputs_paper(out, ds, cfg['thresholds'], cfg['survival']))
                 if ds in TAPVID3D_DATASETS:
                     m.update(eval_outputs_cam(out, w['tp'], ds))
                 if ds in TAPVID2D_DATASETS:
@@ -493,6 +537,7 @@ def main():
               f'elapsed {fmt_dur(time.time() - t_start)}  eta {fmt_dur(eta)}', flush=True)
 
     # per-dataset aggregation + save
+    metric_keys = METRIC_KEYS if args.legacy_metrics else PAPER_METRIC_KEYS
     all_summary = {}
     for ds in args.datasets:
         per_trial = results[ds]
@@ -500,10 +545,18 @@ def main():
         ws = [w for w in work if w['ds'] == ds]
         ds_n_views = ws[0]['n_views'] if ws else None
         summary = {'n_trials': len(ok), 'n_views': ds_n_views, 'view_seed': args.view_seed}
-        for k in METRIC_KEYS:
+        for k in metric_keys:
             vals = np.array([r[k] for r in ok], dtype=float)
             summary[f'{k}_mean'] = float(np.nanmean(vals)) if vals.size else float('nan')
             summary[f'{k}_median'] = float(np.nanmedian(vals)) if vals.size else float('nan')
+        if not args.legacy_metrics:
+            # per-threshold scores, fde and the scores of each track group (_any / _static / _dynamic / _very_dynamic)
+            extra = sorted({k for r in ok for k, v in r.items() if isinstance(v, float)
+                            and k not in metric_keys and k not in ('n_kpts', 'n_late_query')})
+            for k in extra:
+                vals = np.array([r.get(k, float('nan')) for r in ok], dtype=float)
+                summary[f'{k}_mean'] = float(np.nanmean(vals)) if vals.size else float('nan')
+                summary[f'{k}_median'] = float(np.nanmedian(vals)) if vals.size else float('nan')
         if ds in TAPVID3D_DATASETS:
             depth_keys = METRIC_KEYS_CAM + (METRIC_KEYS_WORLD if ds in TAPVID3D_WORLD_DATASETS else [])
             for k in depth_keys:
@@ -519,15 +572,15 @@ def main():
         with open(os.path.join(args.out, ds, 'metrics.json'), 'w') as f:
             json.dump({'summary': summary, 'per_trial': per_trial}, f, indent=2)
         print(f'--- {ds} over {len(ok)} trials: '
-              + '  '.join(f'{k}={summary[f"{k}_mean"]:.4f}' for k in METRIC_KEYS))
+              + '  '.join(f'{k}={summary[f"{k}_mean"]:.4f}' for k in metric_keys))
 
     print(f'\nTotal wall time: {fmt_dur(time.time() - t_start)}')
     write_report(all_summary, args.out)
     print('\n========== TEST-SET SUMMARY (mean / median over trials) ==========')
-    hdr = f'{"dataset":18s} ' + ' '.join(f'{k:>13s}' for k in METRIC_KEYS)
+    hdr = f'{"dataset":18s} ' + ' '.join(f'{k:>13s}' for k in metric_keys)
     print(hdr)
     for ds, s in all_summary.items():
-        print(f'{ds:18s} ' + ' '.join(f'{s[f"{k}_mean"]:13.4f}' for k in METRIC_KEYS))
+        print(f'{ds:18s} ' + ' '.join(f'{s[f"{k}_mean"]:13.4f}' for k in metric_keys))
     print(f'\nSaved: {os.path.join(args.out, "summary.json")} + metrics.md')
 
 

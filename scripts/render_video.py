@@ -311,6 +311,15 @@ def main():
         if vis_pred is not None:
             vis_pred = vis_pred[:, :n]
 
+    # a track exists from its query frame on: hide the frames before it (some trackers also predict backwards in time).
+    # query_times (N,) are frame indices of the clip, absent in the outputs of runs that query everything at frame 0
+    if 'query_times' in data:
+        qt = np.asarray(data['query_times'])[:coords_pred.shape[1]]
+        before_query = np.arange(coords_pred.shape[0])[:, None] < qt[None, :]      # (T, N)
+        conf_pred = np.where(before_query, 0.0, conf_pred)
+        if vis_pred is not None:
+            vis_pred = np.where(before_query, 0.0, vis_pred)
+
     n_frames = coords_pred.shape[0]
     n_kpts = coords_pred.shape[1]
     n_cams = len(video_paths)

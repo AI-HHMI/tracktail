@@ -49,25 +49,46 @@ from tracktail.inference.inference_utils import (
     load_camera_group_from_metadata,   # returns formatted list-of-dicts
     build_video_readers,
     load_multiview_clip,
+    compute_query_first,
 )
 # ------------------------------------------------------------------------
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
-def load_query_points(pose_path: str, start_frame: int = 0):
+def load_query_points(pose_path: str, start_frame: int = 0, query_first: bool = False, vis_cams=None):
     """
     Load 3D query points from pose3d.npz.
 
+    With query_first each point is queried at its first valid frame (finite coords and visible in at least one
+    camera of the pose file, as in tracktail's query_first) instead of at start_frame, e.g. for pose3d_cached.npz.
+    vis_cams restricts that visibility to those columns of the pose file's vis (the cameras that are used).
+
     Returns
     -------
-    query_3d : (N, 3) float32 tensor  – valid (finite) 3D coords at start_frame
+    query_3d : (N, 3) float32 tensor  – valid (finite) 3D coords at the query frame
     valid_mask : (S*K,) bool ndarray  – which flattened (subject × kpt) entries
                                         are included
+    query_times : (N,) int ndarray    – query frame of each point, relative to start_frame
     """
     data = np.load(pose_path)
     coords = data["pose"]                          # (S, T, K, 3)
     S, T, K, _ = coords.shape
+
+    if query_first:
+        vis = data["vis"] if "vis" in data else None
+        if vis is not None and vis_cams is not None:
+            vis = vis[..., vis_cams]
+        queries, times, valids = [], [], []
+        for s in range(S):
+            qt_s, qc_s, valid_s = compute_query_first(
+                coords[s], vis[s] if vis is not None else None, start_frame, None)
+            queries.append(qc_s[valid_s])
+            times.append(qt_s[valid_s])
+            valids.append(valid_s)
+        valid = np.concatenate(valids)
+        query_3d = torch.as_tensor(np.concatenate(queries), dtype=torch.float32)
+        return query_3d, valid, np.concatenate(times).astype(np.int64)
 
     coords_at_start = coords[:, start_frame, :, :]  # (S, K, 3)
     coords_flat = coords_at_start.reshape(-1, 3)    # (S*K, 3)
@@ -75,7 +96,7 @@ def load_query_points(pose_path: str, start_frame: int = 0):
     valid = np.all(np.isfinite(coords_flat), axis=1)
     query_3d = torch.as_tensor(coords_flat[valid], dtype=torch.float32)
 
-    return query_3d, valid
+    return query_3d, valid, np.zeros(int(valid.sum()), dtype=np.int64)
 
 
 def project_to_camera(camera_group, query_3d: torch.Tensor, cam_idx: int) -> torch.Tensor:
@@ -97,6 +118,7 @@ def run_cotracker_single_camera(
     queries_2d: torch.Tensor,    # (N, 2) float32, pixel (x, y) at frame 0
     device: torch.device,
     query_batch_size: int | None = None,
+    query_times: np.ndarray | None = None,   # (N,) query frame of each point; None = all at frame 0
 ):
     """
     Run CoTracker3 on one camera's video.
@@ -117,16 +139,18 @@ def run_cotracker_single_camera(
 
     N = queries_2d.shape[0]
 
+    times = torch.zeros(N) if query_times is None else torch.as_tensor(query_times, dtype=torch.float32)
     if query_batch_size is None or N <= query_batch_size:
-        chunks = [queries_2d]
+        chunks, time_chunks = [queries_2d], [times]
     else:
         chunks = list(torch.split(queries_2d, query_batch_size, dim=0))
+        time_chunks = list(torch.split(times, query_batch_size, dim=0))
 
     all_tracks = []
     all_vis = []
-    for chunk in chunks:
+    for chunk, time_chunk in zip(chunks, time_chunks):
         n = chunk.shape[0]
-        t_col = torch.zeros(n, 1, device=device)
+        t_col = time_chunk.reshape(n, 1).to(device)
         queries = torch.cat([t_col, chunk.to(device)], dim=-1).unsqueeze(0)  # (1, n, 3)
 
         with torch.no_grad():
@@ -174,6 +198,8 @@ def process_trial(
     query_batch_size: int | None = None,
     overwrite: bool = False,
     pose_file: str | None = None,
+    query_first: bool = False,
+    cam_names_use: list[str] | None = None,
 ):
     os.makedirs(outdir, exist_ok=True)
 
@@ -194,15 +220,32 @@ def process_trial(
     camera_group = load_camera_group_from_metadata(metadata_path, device="cpu")
     cam_names = [cam["name"] for cam in camera_group]
 
+    # cameras to run (default all); with --cam-names the query frames also only count visibility in these cameras
+    use_idx = list(range(len(cam_names)))
+    if cam_names_use is not None:
+        missing = [n for n in cam_names_use if n not in cam_names]
+        if missing:
+            print(f"    [skip] requested cameras not in metadata: {missing}")
+            return
+        use_idx = [cam_names.index(n) for n in cam_names_use]
+        with np.load(pose_path) as pose_data:
+            n_vis = pose_data["vis"].shape[-1] if "vis" in pose_data.files else None
+        if query_first and n_vis is not None and n_vis != len(cam_names):
+            raise ValueError(f"{pose_path}: vis has {n_vis} columns but metadata.yaml has {len(cam_names)} cameras, "
+                             f"so the vis columns cannot be matched to --cam-names")
+    use_names = [cam_names[i] for i in use_idx]
+
     # Skip if all outputs already exist
     if not overwrite:
-        existing = [os.path.join(outdir, f"{n}.npz") for n in cam_names]
+        existing = [os.path.join(outdir, f"{n}.npz") for n in use_names]
         if all(os.path.exists(p) for p in existing):
             print(f"    [skip] already done (--overwrite to redo)")
             return
 
     # Load 3D query points
-    query_3d, valid_mask = load_query_points(pose_path, start_frame=start_frame)
+    query_3d, valid_mask, query_times = load_query_points(pose_path, start_frame=start_frame,
+                                                          query_first=query_first,
+                                                          vis_cams=use_idx if cam_names_use is not None else None)
     if query_3d.shape[0] == 0:
         print(f"    [skip] no finite 3D coords at frame {start_frame}")
         return
@@ -212,15 +255,18 @@ def process_trial(
     vid_path = os.path.join(trial_path, "vid")
 
     if os.path.exists(img_path) and os.listdir(img_path):
-        video_paths = [os.path.join(img_path, n) for n in cam_names]
+        video_paths = [os.path.join(img_path, n) for n in use_names]
     elif os.path.exists(vid_path):
-        video_paths = [os.path.join(vid_path, f"{n}.mp4") for n in cam_names]
+        video_paths = [os.path.join(vid_path, f"{n}.mp4") for n in use_names]
     else:
         print(f"    [skip] no img/ or vid/ folder")
         return
 
     readers, lengths = build_video_readers(video_paths)
     max_available = min(lengths)
+    if query_first:
+        # some image folders have more frames than the ground truth: stop where the pose file stops
+        max_available = min(max_available, np.load(pose_path)["pose"].shape[1])
 
     end_frame = min(
         start_frame + n_frames if n_frames is not None else max_available,
@@ -235,12 +281,13 @@ def process_trial(
     views, _ = load_multiview_clip(readers, start_frame, actual_n)
     del readers
 
-    for cam_idx, cam_name in enumerate(tqdm(cam_names, desc="cameras", leave=False)):
+    for k, cam_idx in enumerate(tqdm(use_idx, desc="cameras", leave=False)):
+        cam_name = cam_names[cam_idx]
         out_path = os.path.join(outdir, f"{cam_name}.npz")
         if os.path.exists(out_path) and not overwrite:
             continue
 
-        frames = views[cam_idx]  # (T, H, W, 3), uint8 tensor from decord/cv2
+        frames = views[k]  # (T, H, W, 3), uint8 tensor from decord/cv2
 
         # Resize and pad to TARGET_RES × TARGET_RES (matching posetail's inference resolution)
         frames_np = frames.numpy() if isinstance(frames, torch.Tensor) else np.asarray(frames)
@@ -258,6 +305,7 @@ def process_trial(
         tracks, visibility = run_cotracker_single_camera(
             model, frames_t, queries_proc, device,
             query_batch_size=query_batch_size,
+            query_times=query_times,
         )
         # tracks: (T, N, 2) in TARGET_RES space — invert to original pixel space before saving
         tracks_orig = tracks.clone()
@@ -275,6 +323,7 @@ def process_trial(
             video_size=video_size,           # (W, H) after any resizing
             valid_mask=valid_mask,           # (S*K,) bool
             start_frame=start_frame,
+            query_times=query_times,         # (N,) query frame of each point (0 unless --query-first)
         )
         print(f"      {cam_name}: tracks {tuple(tracks.shape)}")
 
@@ -314,6 +363,12 @@ def parse_args():
                    help="Re-run trials that already have cotracker/ outputs")
     p.add_argument("--pose-file", type=str, default=None,
                    help="Override pose3d.npz with this file for query points (e.g. pose3d_100.npz)")
+    p.add_argument("--cam-names", nargs="+", default=None,
+                   help="Run only these cameras (default: all). With --query-first the query frames then only count "
+                        "visibility in these cameras; triangulate with the same --cam-names")
+    p.add_argument("--query-first", action="store_true",
+                   help="query every point at its first valid frame (as tracktail does) instead of at "
+                        "--start-frame; needed for pose3d_cached.npz, where tracks start at different frames")
     return p.parse_args()
 
 
@@ -359,6 +414,8 @@ def main():
                 query_batch_size=args.query_batch_size,
                 overwrite=args.overwrite,
                 pose_file=args.pose_file,
+                query_first=args.query_first,
+                cam_names_use=args.cam_names,
             )
 
     print("Done.")

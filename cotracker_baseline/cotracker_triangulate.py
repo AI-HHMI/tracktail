@@ -204,6 +204,7 @@ def process_trial(
     vis_per_cam    = []
     frame_numbers  = None
     valid_mask     = None
+    query_times    = None
 
     for cam_name in cam_names_used:
         npz = np.load(os.path.join(cotracker_dir, f"{cam_name}.npz"))
@@ -214,6 +215,8 @@ def process_trial(
         if frame_numbers is None:
             frame_numbers = npz["frame_numbers"]
             valid_mask    = npz["valid_mask"]
+            if "query_times" in npz.files:
+                query_times = npz["query_times"]
         else:
             # Sanity check: all cameras should cover the same frames
             if not np.array_equal(frame_numbers, npz["frame_numbers"]):
@@ -259,6 +262,7 @@ def process_trial(
         valid_mask=valid_mask,         # (S*K,) bool — same as inference
         cam_names=np.array(cam_names_used, dtype=str),
         min_cams_used=min_cams,
+        **({} if query_times is None else {"query_times": query_times}),  # (N,) frame each point was queried at
         coords_true=coords_true[np.newaxis].astype(np.float32),  # (1, T, N, 3) GT
         vis_true=vis_true[np.newaxis, :, :, np.newaxis],         # (1, T, N, 1) GT bool
         # render_video.py-compatible keys
