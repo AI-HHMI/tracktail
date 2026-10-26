@@ -53,6 +53,23 @@ def generate_colors(n):
     return colors
 
 
+def generate_ordered_colors(order):
+    """Colors for tracks ranked by `order` (e.g. their left-to-right position): the hue sweeps the full color wheel
+    along the rank, so the colors are organized from left to right, and the saturation / brightness cycle through
+    three levels so that neighbouring tracks (similar hues) still look different."""
+    n = len(order)
+    rank = np.empty(n, dtype=int)
+    rank[np.argsort(order, kind='stable')] = np.arange(n)
+    levels = [(255, 255), (150, 255), (255, 170)]          # (saturation, value)
+    colors = []
+    for r in rank:
+        hue = int(round(170 * r / max(n - 1, 1)))          # 0..170 of OpenCV's 0..180, so red does not wrap around
+        s, v = levels[r % len(levels)]
+        bgr = cv2.cvtColor(np.array([[[hue, s, v]]], dtype=np.uint8), cv2.COLOR_HSV2BGR)[0, 0]
+        colors.append(tuple(int(c) for c in bgr))
+    return colors
+
+
 def _point_visible(point, conf_val, conf_threshold, w, h, vis_val=None):
     """Whether a single keypoint should be drawn at the given frame.
 
@@ -185,6 +202,10 @@ def parse_args():
                         help='Render predicted coordinates, but show/hide each point by the ground-truth visibility '
                              '(vis_true) instead of the predicted confidence/visibility, so every method shows the '
                              'same points at every frame')
+    parser.add_argument('--color-order-view', type=str, default=None,
+                        help='Color the tracks by their left-to-right order in this camera: the x pixel of the '
+                             'ground truth (coords_true) at the first frame it is visible, so the colors are the same '
+                             'for every method run on the same tracks (see generate_ordered_colors)')
     parser.add_argument('--max-points', type=int, default=None,
                         help='Limit rendering to the first N keypoints')
 
@@ -380,7 +401,23 @@ def main():
         crop_boxes = [None] * n_cams
 
     # Generate colors for keypoints
-    colors = generate_colors(n_kpts)
+    if args.color_order_view is not None:
+        if is_2d or 'coords_true' not in data:
+            raise ValueError('--color-order-view needs 3D predictions with coords_true')
+        if args.color_order_view not in cam_names:
+            raise ValueError(f'--color-order-view {args.color_order_view} not in {cam_names}')
+        gt = np.asarray(data['coords_true'], dtype=np.float32)[0][:, :n_kpts]        # (T, N, 3)
+        gt_vis = np.isfinite(gt).all(-1)
+        if 'vis_true' in data:
+            vt = np.asarray(data['vis_true'])[0][:, :n_kpts]
+            gt_vis &= (vt[..., 0] if vt.ndim == 3 else vt).astype(bool)
+        first = np.argmax(gt_vis, axis=0)                                            # (N,)
+        gt_first = np.nan_to_num(gt[first, np.arange(n_kpts)])[None]                  # (1, N, 3)
+        cam = camera_group[cam_names.index(args.color_order_view)]
+        x = project_points_torch([cam], torch.as_tensor(gt_first))[0, 0, :, 0].cpu().numpy()
+        colors = generate_ordered_colors(np.nan_to_num(x, nan=np.inf))
+    else:
+        colors = generate_colors(n_kpts)
 
     # Build readers
     readers, _ = build_video_readers(video_paths)

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Re-render the trials of the paper's qualitative comparison (tracktail-paper/format_arrow.ipynb) for every method,
 # hiding points only where the ground truth is occluded (render_video.py --gt-visibility), so all columns show the
-# same points at every frame. The predictions are the ones of the existing renders (their render_info.json).
+# same points at every frame. The tracks are colored by their left-to-right order in the figure's camera
+# (render_video.py --color-order-view), with the same colors in every column. The predictions are the ones of the
+# existing renders (their render_info.json).
 #
 # Renders go to $RENDER_ROOT/gtvis-renders/<method>/<dataset>/<trial>/ (default RENDER_ROOT
 # /groups/karashchuk/home/karashchukl/renders).
@@ -23,11 +25,11 @@ render() {   # method dataset trial npz [extra args]
     local method=$1 dataset=$2 trial=$3 npz=$4; shift 4
     echo "  rendering $method $dataset $trial"
     $PYTHON "$REPO/scripts/render_video.py" --input-npz "$npz" --output-dir "$OUT/$method/$dataset/$trial" \
-        --trails --trail-length 30 --max-points 100 "$@"
+        --trails --trail-length 30 --max-points 100 --color-order-view "$view" "$@"
 }
 
-for spec in "dex_ycb 20200918-subject-06__20200918_114117" "cmupanoptic_3dgs tennis"; do
-    read -r dataset trial <<< "$spec"
+for spec in "dex_ycb 20200918-subject-06__20200918_114117 view_00" "cmupanoptic_3dgs tennis 14"; do
+    read -r dataset trial view <<< "$spec"   # view: the camera of the figure, which orders the colors
     tt=$RES/posetail-outputs/main_finetune_vzkjqrys_canonical_cached_100/$dataset/${trial}_trial.npz
     render gt        $dataset $trial "$tt" --use-gt
     render tracktail $dataset $trial "$tt" --gt-visibility
