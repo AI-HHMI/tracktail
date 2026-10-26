@@ -206,6 +206,12 @@ def parse_args():
                         help='Color the tracks by their left-to-right order in this camera: the x pixel of the '
                              'ground truth (coords_true) at the first frame it is visible, so the colors are the same '
                              'for every method run on the same tracks (see generate_ordered_colors)')
+    parser.add_argument('--color-order-frame', type=int, default=None,
+                        help='With --color-order-view: order by the ground truth at this frame index (negative counts '
+                             'from the end) instead of the first visible frame; a track not visible there uses its '
+                             'visible frame closest to it')
+    parser.add_argument('--color-order-axis', choices=['x', 'y'], default='x',
+                        help='With --color-order-view: x orders the colors left to right, y top to bottom')
     parser.add_argument('--max-points', type=int, default=None,
                         help='Limit rendering to the first N keypoints')
 
@@ -411,11 +417,18 @@ def main():
         if 'vis_true' in data:
             vt = np.asarray(data['vis_true'])[0][:, :n_kpts]
             gt_vis &= (vt[..., 0] if vt.ndim == 3 else vt).astype(bool)
-        first = np.argmax(gt_vis, axis=0)                                            # (N,)
-        gt_first = np.nan_to_num(gt[first, np.arange(n_kpts)])[None]                  # (1, N, 3)
+        T_gt = gt.shape[0]
+        if args.color_order_frame is None:
+            ref = np.argmax(gt_vis, axis=0)                                          # first visible frame, (N,)
+        else:
+            target = args.color_order_frame % T_gt
+            gap = np.where(gt_vis, np.abs(np.arange(T_gt)[:, None] - target), np.iinfo(np.int64).max)
+            ref = np.argmin(gap, axis=0)                                             # visible frame closest to it
+        gt_ref = np.nan_to_num(gt[ref, np.arange(n_kpts)])[None]                     # (1, N, 3)
         cam = camera_group[cam_names.index(args.color_order_view)]
-        x = project_points_torch([cam], torch.as_tensor(gt_first))[0, 0, :, 0].cpu().numpy()
-        colors = generate_ordered_colors(np.nan_to_num(x, nan=np.inf))
+        uv = project_points_torch([cam], torch.as_tensor(gt_ref))[0, 0].cpu().numpy()  # (N, 2)
+        key = uv[:, 0 if args.color_order_axis == 'x' else 1]
+        colors = generate_ordered_colors(np.nan_to_num(key, nan=np.inf))
     else:
         colors = generate_colors(n_kpts)
 
@@ -441,6 +454,9 @@ def main():
         'use_gt': args.use_gt,
         'gt_visibility': args.gt_visibility,
         'max_points': args.max_points,
+        'color_order_view': args.color_order_view,
+        'color_order_frame': args.color_order_frame,
+        'color_order_axis': args.color_order_axis,
     }
     with open(os.path.join(args.output_dir, 'render_info.json'), 'w') as f:
         json.dump(render_info, f, indent=2)
