@@ -181,6 +181,10 @@ def parse_args():
                         help='Width in pixels of the trail polyline')
     parser.add_argument('--use-gt', action='store_true', default=False,
                         help='Render ground-truth coordinates (coords_true) instead of predictions')
+    parser.add_argument('--gt-visibility', action='store_true', default=False,
+                        help='Render predicted coordinates, but show/hide each point by the ground-truth visibility '
+                             '(vis_true) instead of the predicted confidence/visibility, so every method shows the '
+                             'same points at every frame')
     parser.add_argument('--max-points', type=int, default=None,
                         help='Limit rendering to the first N keypoints')
 
@@ -304,6 +308,15 @@ def main():
             vis_pred = vis_pred[..., 0]
         vis_pred = _sigmoid(vis_pred)   # (T, N)
 
+    if args.gt_visibility:
+        if 'vis_true' not in data:
+            raise ValueError('--gt-visibility needs vis_true in the input npz')
+        vis_true = np.asarray(data['vis_true'])[0]           # (T, N) or (T, N, 1)
+        if vis_true.ndim == 3:
+            vis_true = vis_true[..., 0]
+        vis_pred = vis_true.astype(np.float32)               # 1 visible, 0 occluded (already probabilities)
+        conf_pred = np.ones_like(vis_pred)
+
     if args.max_points is not None:
         n = args.max_points
         coords_pred = coords_pred[:, :n]
@@ -388,6 +401,9 @@ def main():
         'trails': args.trails,
         'trail_length': args.trail_length,
         'trail_thickness': args.trail_thickness,
+        'use_gt': args.use_gt,
+        'gt_visibility': args.gt_visibility,
+        'max_points': args.max_points,
     }
     with open(os.path.join(args.output_dir, 'render_info.json'), 'w') as f:
         json.dump(render_info, f, indent=2)
