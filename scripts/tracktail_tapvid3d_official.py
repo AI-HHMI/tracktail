@@ -36,6 +36,7 @@ import yaml
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
+from tracktail.model.eval_metrics import TRACKTAIL_VIS_THRESH       # noqa: E402
 from tracktail.inference.inference_utils import (                 # noqa: E402
     load_model_from_base_folder, load_camera_group_from_metadata, run_tracker_encoder_on_videos)
 
@@ -184,7 +185,7 @@ def main():
                     help='give tracktail the ground-truth per-frame camera poses (moving calibrated camera, world = the '
                          'first camera; DriveTrack and ADT only); predictions are saved in camera coordinates as usual')
     ap.add_argument('--adt-poses', default=ADT_POSES, help='ADT camera poses recovered from the raw sequences')
-    ap.add_argument('--vis-thresh', type=float, default=0.1,
+    ap.add_argument('--vis-thresh', type=float, default=TRACKTAIL_VIS_THRESH,
                     help='visibility threshold of the predicted occlusion carried between windows (occlusion embedding); '
                          'score with the same --vis-thresh in tapvid3d_official_metrics.py')
     ap.add_argument('--n-overlap', type=int, default=8)

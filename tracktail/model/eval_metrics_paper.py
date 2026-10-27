@@ -158,7 +158,7 @@ def get_track_metrics(coords_pred, coords_true, vis_pred, vis_true, query_times,
 
 def get_eval_metrics_paper(coords_pred, coords_true, vis_pred, vis_true, query_times = None,
                            thresholds = None, survival_threshold = 50, movement_thresholds = None,
-                           prefix = ''):
+                           prefix = '', vis_thresh = 0.5):
     '''
     evaluation metrics computed the way the paper reports them: per track, averaged over
     tracks, and (when movement_thresholds are given) as the mean of the static and the
@@ -179,6 +179,8 @@ def get_eval_metrics_paper(coords_pred, coords_true, vis_pred, vis_true, query_t
         survival_threshold: failure distance for the survival rate
         movement_thresholds: (static, dynamic, very dynamic) or None to score all tracks together
         prefix: added in front of every key
+        vis_thresh: predicted visible when sigmoid(vis logit) > vis_thresh (tracktail: TRACKTAIL_VIS_THRESH = 0.1,
+            baselines: 0.5)
 
     returns:
         dict of floats
@@ -187,7 +189,7 @@ def get_eval_metrics_paper(coords_pred, coords_true, vis_pred, vis_true, query_t
     if thresholds is None:
         thresholds = [1, 2, 4, 8, 16]
 
-    vis_pred = _sigmoid(np.squeeze(vis_pred, axis = -1)) > 0.5               # B, T, N
+    vis_pred = _sigmoid(np.squeeze(vis_pred, axis = -1)) > vis_thresh        # B, T, N
     vis_true = np.squeeze(vis_true, axis = -1).astype(bool)                  # B, T, N
     B, T, N = vis_true.shape
 

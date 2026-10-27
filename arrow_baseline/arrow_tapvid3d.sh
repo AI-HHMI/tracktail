@@ -143,7 +143,8 @@ EOF
         --root          "$ROOT" \
         --out           "$OUT" \
         --datasets      "$DS" \
-        --wandb-folder  /nonexistent-no-tracktail-model
+        --wandb-folder  /nonexistent-no-tracktail-model \
+        --vis-thresh    0.5     # baseline: the official threshold (the script defaults to tracktail's 0.1)
 
     # every call above rewrites summary.json with its own dataset only: rebuild it over the datasets that are finished,
     # and write summary.csv (one row per dataset)

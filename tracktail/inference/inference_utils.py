@@ -15,6 +15,7 @@ from collections import defaultdict
 from decord import VideoReader, cpu
 from aniposelib.cameras import CameraGroup, Camera
 
+from tracktail.model.eval_metrics import TRACKTAIL_VIS_THRESH
 from tracktail.datasets.utils import get_dirs, disassemble_extrinsics
 from tracktail.model.cube import project_points_torch
 from tracktail.model.tracker_encoder import TrackerEncoder
@@ -707,7 +708,7 @@ def run_tracker_encoder_on_videos(
     query_times=None,
     motion_margin=True,
     conf_crop_thresh=0.1,
-    vis_thresh=0.1,
+    vis_thresh=TRACKTAIL_VIS_THRESH,
 ):
     """Windowed multi-view tracking whose per-chunk crop FOLLOWS the subject.
 
@@ -1385,7 +1386,7 @@ def run_inference(
     max_points=None,
     cam_names_filter=None,
     pose_file=None,
-    vis_thresh=0.1,
+    vis_thresh=TRACKTAIL_VIS_THRESH,
 ):
     """Run inference on one trial with an already-loaded model.
 
