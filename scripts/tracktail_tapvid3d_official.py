@@ -90,7 +90,7 @@ def track_one_way(model, video_dir, camera_group, q3d, qt, occ, T, args, device)
         model=model, video_paths=[video_dir], camera_group=camera_group,
         query_points_3d=torch.as_tensor(q3d, dtype=torch.float32), start_frame=0, n_frames=T,
         n_overlap=args.n_overlap, max_kpts=args.max_kpts, device=device, occlusion_gt=occ,
-        query_times=torch.as_tensor(qt, dtype=torch.int32), motion_margin=True)
+        query_times=torch.as_tensor(qt, dtype=torch.int32), motion_margin=True, vis_thresh=args.vis_thresh)
     fn = out['frame_numbers'].numpy()
     if len(fn) != T or not np.array_equal(fn, np.arange(T)):
         raise RuntimeError(f'tracker returned frames {fn[:3]}..{fn[-1:]} for T={T}')
@@ -184,6 +184,9 @@ def main():
                     help='give tracktail the ground-truth per-frame camera poses (moving calibrated camera, world = the '
                          'first camera; DriveTrack and ADT only); predictions are saved in camera coordinates as usual')
     ap.add_argument('--adt-poses', default=ADT_POSES, help='ADT camera poses recovered from the raw sequences')
+    ap.add_argument('--vis-thresh', type=float, default=0.1,
+                    help='visibility threshold of the predicted occlusion carried between windows (occlusion embedding); '
+                         'score with the same --vis-thresh in tapvid3d_official_metrics.py')
     ap.add_argument('--n-overlap', type=int, default=8)
     ap.add_argument('--max-kpts', type=int, default=2500, help='keypoint chunk size (as eval_testset_metrics.py)')
     ap.add_argument('--device', default='cuda:0')

@@ -9,7 +9,8 @@
 #
 # Submit (one job per dataset): bash tracktail_tapvid3d_official.sh [dataset ...]
 # Run here:               LOCAL=1 DEVICE=cuda:0 bash tracktail_tapvid3d_official.sh
-# Env: GT_POSES=1 gives tracktail the ground-truth camera poses (DriveTrack/ADT only; folder _gtposes);
+# Env: VIS_THRESH (default 0.1) visibility threshold for inference and scoring (folder suffix _vis<thr>);
+#      GT_POSES=1 gives tracktail the ground-truth camera poses (DriveTrack/ADT only; folder _gtposes);
 #      MAX_FRAMES=48 for the D4RT short-clip setting (separate output folder _first48);
 #      SPLIT=minival (default, 50 videos per dataset as in the papers) | full; NAME, WANDB_RUN, OUT_BASE, REPO, QUEUE, WALL.
 # Predictions in $OUT/<dataset>/ are reused (resubmit a job that hit its time limit).
@@ -24,7 +25,8 @@ WANDB_RUN=${WANDB_RUN:-$WANDB_BASE/run-20260912_115732-vzkjqrys}
 SPLIT=${SPLIT:-minival}
 MAX_FRAMES=${MAX_FRAMES:-}   # e.g. 48: the first 48 frames only (D4RT setting)
 GT_POSES=${GT_POSES:-}       # 1: give tracktail the ground-truth camera poses (DriveTrack, ADT)
-SUFFIX=$([[ -n "$MAX_FRAMES" ]] && echo "_first${MAX_FRAMES}")$([[ -n "$GT_POSES" ]] && echo "_gtposes")
+VIS_THRESH=${VIS_THRESH:-0.1}   # visibility threshold in inference (occlusion carried between windows) and scoring
+SUFFIX=$([[ -n "$MAX_FRAMES" ]] && echo "_first${MAX_FRAMES}")$([[ -n "$GT_POSES" ]] && echo "_gtposes")_vis${VIS_THRESH}
 OUT=${OUT:-$OUT_BASE/${NAME}_tapvid3d_official_${SPLIT}${SUFFIX}}
 DATASETS="tapvid3d_pstudio tapvid3d_drivetrack tapvid3d_adt"
 QUEUE=${QUEUE:-gpu_h100}
@@ -36,7 +38,7 @@ if [[ "$1" != "--worker" ]]; then
     mkdir -p "$LOGS"
     for DS in ${@:-$DATASETS}; do   # one job per dataset
         J="${NAME}_${DS}_official_${SPLIT}${SUFFIX}"
-        CMD="env NAME=$NAME WANDB_RUN=$WANDB_RUN SPLIT=$SPLIT MAX_FRAMES=$MAX_FRAMES GT_POSES=$GT_POSES OUT=$OUT REPO=$REPO bash $SELF --worker $DS"
+        CMD="env NAME=$NAME WANDB_RUN=$WANDB_RUN SPLIT=$SPLIT MAX_FRAMES=$MAX_FRAMES GT_POSES=$GT_POSES VIS_THRESH=$VIS_THRESH OUT=$OUT REPO=$REPO bash $SELF --worker $DS"
         if command -v bsub >/dev/null 2>&1; then
             bsub -J "$J" -W "$WALL" -e "$LOGS/$J-%J.err" -o "$LOGS/$J-%J.out" -n 8 -q "$QUEUE" -gpu "num=1" $CMD
         else   # not on a submit host: go through login2
@@ -62,9 +64,9 @@ mkdir -p "$OUT"
 for DS in "$@"; do
     echo "starting tracktail tapvid3d (official protocol): $NAME / $DS ($SPLIT) -> $OUT"
     $PYTHON scripts/tracktail_tapvid3d_official.py --wandb-folder "$WANDB_RUN" --out "$OUT" --datasets "$DS" \
-        $SPLIT_ARGS --device "${DEVICE:-cuda:0}" ${MAX_FRAMES:+--max-frames $MAX_FRAMES} ${GT_POSES:+--gt-poses}
+        $SPLIT_ARGS --device "${DEVICE:-cuda:0}" ${MAX_FRAMES:+--max-frames $MAX_FRAMES} ${GT_POSES:+--gt-poses} --vis-thresh $VIS_THRESH
     # official metrics over the datasets that have predictions: median scaling (official default) and none (metric)
-    $PYTHON scripts/tapvid3d_official_metrics.py --out "$OUT" --scaling median --tag _median
-    $PYTHON scripts/tapvid3d_official_metrics.py --out "$OUT" --scaling none --tag _none
+    $PYTHON scripts/tapvid3d_official_metrics.py --out "$OUT" --scaling median --tag _median --vis-thresh $VIS_THRESH
+    $PYTHON scripts/tapvid3d_official_metrics.py --out "$OUT" --scaling none --tag _none --vis-thresh $VIS_THRESH
 done
 echo "done!"
