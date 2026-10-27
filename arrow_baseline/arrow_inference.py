@@ -24,6 +24,12 @@ temporal encoding, so any image set works). At most --max-anchors anchor images 
 are split across several encodings of the same window. The cameras are static, so the first camera's frame is the same
 coordinate system for every window; each encoding has its own scale.
 
+With --reference target (TAPVid-3D, arrow_tapvid3d.sh), each target is predicted in its own camera's coordinate system
+(the reference observation is the target timestep of the first camera) instead of the first camera at timestep 0: this
+is the paper's camera-coordinate TAPVid-3D protocol (Sec. 4), for ground truth given per frame in the camera's own
+coordinates (static identity extrinsics in metadata.yaml, as in the tapvid3d_* datasets); the scale fit and the
+extrinsics mapping are then applied in those per-frame camera coordinates.
+
 Outputs:  <output_root>/<dataset>/<session>_<trial>.npz   (fields as in mvtracker_inference.py)
 
 Run with ARROW's environment (cd ../arrow && uv sync):
@@ -99,9 +105,10 @@ def project(X, K, E):
 class ImageCache:
     """Prepared images (3, H, W) float in [0, 1], per (frame, camera index), with their original->input transforms."""
 
-    def __init__(self, img_dirs, max_side, size=512):
+    def __init__(self, img_dirs, max_side, size=512, crop_top=0, crop_height=None):
         self.files = [sorted(os.listdir(d), key=natural_key) for d in img_dirs]
         self.dirs, self.max_side, self.size, self.cache = img_dirs, max_side, size, {}
+        self.crop_top, self.crop_height = crop_top, crop_height
 
     def n_frames(self):
         return min(len(f) for f in self.files)
@@ -113,9 +120,16 @@ class ImageCache:
                 self.cache.pop(next(iter(self.cache)))
             with Image.open(os.path.join(self.dirs[c], self.files[c][t])) as im:
                 im = im.convert("RGB")
+            if self.crop_top or self.crop_height:
+                # drop a strip from the top (ARROW's Waymo preprocessing): only the principal point moves, so the
+                # camera-coordinate targets are unchanged; original pixels map through the shift
+                im = im.crop((0, self.crop_top, im.width,
+                               im.height if self.crop_height is None else self.crop_top + self.crop_height))
             info = {}
             tensor = prepare_images([im], [info], max_side=self.max_side)[0]
-            self.cache[key] = (tensor, np.asarray(info["original_to_input"], dtype=np.float64))
+            A = np.asarray(info["original_to_input"], dtype=np.float64).copy()
+            A[:2, 2] -= A[:2, 1] * self.crop_top              # original (x, y) -> cropped (x, y - crop_top) -> input
+            self.cache[key] = (tensor, A)
         return self.cache[key]
 
 
@@ -154,10 +168,11 @@ def camera_scale(model, encoded, V, E_used, decode_chunk_size, grid_size=32):
     return float(np.median(ratios)) if ratios else None
 
 
-def run_encoding(model, images, src_frame, xy, targets_t, V, device, decode_chunk_size):
+def run_encoding(model, images, src_frame, xy, targets_t, V, device, decode_chunk_size, reference="first"):
     """Encode images [F,3,H,W] (frames 0..V*len(targets_t)-1 are the window, t-major, anchors after), decode each
-    query at every window frame with reference frame 0. Returns points (N, Tw, 3) at camera 0's slot, visibility
-    logits (N, Tw, V), and the encoding."""
+    query at every window frame with reference frame 0 (reference='first') or camera 0 at the target's timestep
+    (reference='target'). Returns points (N, Tw, 3) at camera 0's slot, visibility logits (N, Tw, V), and the
+    encoding."""
     Tw = len(targets_t)
     F_win = Tw * V
     imgs = images.unsqueeze(0).to(device)
@@ -166,10 +181,12 @@ def run_encoding(model, images, src_frame, xy, targets_t, V, device, decode_chun
         N = len(xy)
         xy_t = torch.as_tensor(xy, dtype=torch.float32, device=device)
         # seed-major order: query n, target f  ->  index n * F_win + f
+        tgt = torch.arange(F_win, device=device)
+        ref = (tgt // V) * V if reference == "target" else torch.zeros_like(tgt)
         q = Queries(xy_t.repeat_interleave(F_win, 0),
                     torch.as_tensor(src_frame, device=device).repeat_interleave(F_win),
-                    torch.arange(F_win, device=device).repeat(N),
-                    0)
+                    tgt.repeat(N),
+                    ref.repeat(N))
         p = model.decode(encoded, q, decode_chunk_size=decode_chunk_size)
     pts = p.points[0].float().cpu().numpy().reshape(N, Tw, V, 3)[:, :, 0]
     vis = p.visibility_logits[0].float().cpu().numpy().reshape(N, Tw, V)
@@ -215,7 +232,8 @@ def process_trial(trial_path, out_path, model, device, args, dataset_name):
     if not all(os.path.isdir(d) for d in img_dirs):
         print("    [skip] missing img/<camera> folders")
         return
-    images = ImageCache(img_dirs, args.max_side, size=max(512, 4 * V * args.window))
+    images = ImageCache(img_dirs, args.max_side, size=max(512, 4 * V * args.window), crop_top=args.crop_top,
+                         crop_height=args.crop_height)
 
     pose = np.load(pose_path)
     coords_gt, vis_gt_raw = pose["pose"], (pose["vis"] if "vis" in pose.files else None)
@@ -231,7 +249,17 @@ def process_trial(trial_path, out_path, model, device, args, dataset_name):
     coords_flat = coords_gt.transpose(0, 2, 1, 3).reshape(S * Kp, T_full, 3)[:, :T]          # (M, T, 3)
     vis_cams = (vis_gt_raw[..., cam_idx].transpose(0, 2, 1, 3).reshape(S * Kp, T_full, V)[:, :T] > 0.5
                 if vis_gt_raw is not None else None)                                        # (M, T, V)
-    if args.query_first:
+    xyt = None
+    if args.queries_xyt:
+        # the file's own queries (TAPVid-3D's queries_xyt: pixel x, y in camera 0 and frame t), single camera only
+        if "queries_xyt" not in pose.files or V != 1 or S != 1:
+            raise ValueError(f"{pose_path}: --queries-xyt needs queries_xyt, one camera and one subject")
+        xyt = np.asarray(pose["queries_xyt"], dtype=np.float64)                              # (M, 3)
+        qt = np.round(xyt[:, 2]).astype(np.int64)
+        valid = np.isfinite(xyt).all(-1) & (qt >= 0) & (qt < T)
+        qt = np.clip(qt, 0, T - 1)
+        valid &= np.isfinite(coords_flat[np.arange(len(qt)), qt]).all(-1)
+    elif args.query_first:
         qt, valid = compute_query_first(coords_flat.transpose(1, 0, 2),
                                         vis_cams.any(-1).T if vis_cams is not None else None)
     else:
@@ -260,7 +288,8 @@ def process_trial(trial_path, out_path, model, device, args, dataset_name):
         front = [c for c, (_, z) in zip(cand, uvs) if z[0] > 0]
         c = rng.choice(front if front else cand)
         src_view[n] = c
-        src_xy_orig[n] = project(q3d[n:n + 1], K_used[c], E_used[c])[0][0]
+        src_xy_orig[n] = (xyt[idx[n], :2] if xyt is not None
+                          else project(q3d[n:n + 1], K_used[c], E_used[c])[0][0])
 
     # predictions in camera 0's frame (before scaling) and visibility logits, per window
     pred_cam0 = np.full((N, T, 3), np.nan, dtype=np.float64)
@@ -297,9 +326,11 @@ def process_trial(trial_path, out_path, model, device, args, dataset_name):
                 xy.append(A[:2, :2] @ src_xy_orig[n] + A[:2, 2])
                 src_frame.append(f)
             H, W = imgs.shape[-2:]
-            xy = np.clip(np.asarray(xy), -0.5, [W - 0.5, H - 0.5])
+            xy = np.asarray(xy)
+            if not args.no_clip_queries:
+                xy = np.clip(xy, -0.5, [W - 0.5, H - 0.5])
             pts, vis, encoded = run_encoding(model, imgs, np.asarray(src_frame), xy, win_t, V, device,
-                                             args.decode_chunk_size)
+                                             args.decode_chunk_size, args.reference)
             if args.scale_mode == "cameras":
                 s = camera_scale(model, encoded, V, E_used, args.decode_chunk_size) if V > 1 else None
             else:
@@ -314,6 +345,17 @@ def process_trial(trial_path, out_path, model, device, args, dataset_name):
             n_enc += 1
             if device.type == "cuda":
                 torch.cuda.empty_cache()
+
+    if args.recenter:
+        # the model sees a (cropped) image and predicts in a camera with its principal point at the image centre:
+        # map to the true camera (principal point from the calibration; the camera-coordinate targets are in it)
+        if V != 1:
+            raise ValueError("--recenter needs one camera")
+        with Image.open(os.path.join(img_dirs[0], images.files[0][0])) as im0:
+            Wi, Hi = im0.size
+        h = (Hi - args.crop_top) if args.crop_height is None else args.crop_height
+        c = (np.array([Wi / 2, args.crop_top + h / 2]) - K_used[0][[0, 1], [2, 2]]) / K_used[0][[0, 1], [0, 1]]
+        pred_cam0[..., :2] += pred_cam0[..., 2:3] * c
 
     # camera 0 -> world
     E0inv = np.linalg.inv(E_used[0])
@@ -363,14 +405,30 @@ def parse_args():
     p.add_argument("--pose-file", default="pose3d.npz")
     p.add_argument("--query-first", action="store_true",
                    help="query each track at its first frame that is finite and visible in a used camera")
+    p.add_argument("--queries-xyt", action="store_true",
+                   help="use the pose file's queries_xyt (TAPVid-3D's official query pixels and frames; one camera)")
     p.add_argument("--query-seed", type=int, default=0, help="seed of the source-view choice")
     p.add_argument("--n-frames", type=int, default=None)
     p.add_argument("--window", type=int, default=24, help="timesteps per encoding (all cameras)")
     p.add_argument("--max-anchors", type=int, default=24,
                    help="max source images added to a window's encoding for queries outside it")
     p.add_argument("--max-side", type=int, default=504)
+    p.add_argument("--crop-top", type=int, default=0,
+                   help="remove this many rows from the top of every image before resizing (ARROW's DriveTrack "
+                        "protocol: 1920x1280 -> 1920x886, i.e. 394; queries in the removed strip are still queried)")
+    p.add_argument("--crop-height", type=int, default=None,
+                   help="keep this many rows starting at --crop-top (default: to the bottom of the image)")
+    p.add_argument("--recenter", action="store_true",
+                   help="shift predictions from the crop-centred camera to the calibrated principal point (TAPVid-3D "
+                        "DriveTrack with --crop-top, as the ARROW authors describe; one camera; the reference camera is the "
+                        "same physical camera for --reference target and first, so the same shift applies)")
+    p.add_argument("--no-clip-queries", action="store_true",
+                   help="do not clamp query pixels that fall outside the (cropped) input image to its border")
     p.add_argument("--scale-mode", choices=["gt-tracks", "cameras"], default="gt-tracks",
                    help="gt-tracks: paper Eq. 11 per encoding; cameras: from the GT camera centers")
+    p.add_argument("--reference", choices=["first", "target"], default="first",
+                   help="first: every target in camera 0 at timestep 0 (static rigs); target: in camera 0 at the "
+                        "target's timestep (ground truth in per-frame camera coordinates, TAPVid-3D)")
     p.add_argument("--decode-chunk-size", type=int, default=100_000)
     p.add_argument("--overwrite", action="store_true")
     return p.parse_args()

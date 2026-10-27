@@ -1,0 +1,44 @@
+\begin{table*}[t!]
+\centering
+\caption{\textbf{Comparison of 3D point tracking methods on TAPVid-3D} - Camera-coordinate 3D tracking on the three real-world monocular datasets of TAPVid-3D (mini-val split, full sequences, official evaluation with per-sequence median scale alignment). GT intr.\ indicates whether the method is given the ground-truth camera intrinsics. D4RT and ARROW metrics are taken directly from their papers \cite{zhang2026d4rt, fradlin2026arrow}. Tracktail is queried with the ground-truth 3D position of each query point, and a point is predicted visible when its visibility probability exceeds 0.1.}
+\label{tab:tapvid3d_results}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l c ccc ccc ccc}
+\toprule
+\multirow{2}{*}{Method}
+  & \multirow{2}{*}{GT intr.}
+  & \multicolumn{3}{c}{DriveTrack}
+  & \multicolumn{3}{c}{Aria Digital Twin}
+  & \multicolumn{3}{c}{PStudio} \\
+\cmidrule(lr){3-5}\cmidrule(lr){6-8}\cmidrule(lr){9-11}
+  &
+  & AJ$\uparrow$ & APD$_\text{3D}\uparrow$ & OA$\uparrow$
+  & AJ$\uparrow$ & APD$_\text{3D}\uparrow$ & OA$\uparrow$
+  & AJ$\uparrow$ & APD$_\text{3D}\uparrow$ & OA$\uparrow$ \\
+\midrule
+D4RT~\cite{zhang2026d4rt}
+  & $\times$
+  & 0.257 & 0.345 & 0.875
+  & 0.240 & 0.319 & 0.926
+  & 0.138 & 0.186 & 0.897 \\
+ARROW~\cite{fradlin2026arrow}
+  & $\times$
+  & 0.241 & 0.350 & 0.816
+  & 0.360 & 0.473 & 0.902
+  & 0.141 & 0.201 & 0.870 \\
+\midrule
+\rowcolor{rowgray}
+D4RT~\cite{zhang2026d4rt}
+  & $\checkmark$
+  & 0.304 & 0.410 & 0.875
+  & 0.307 & 0.408 & 0.926
+  & 0.372 & 0.498 & 0.897 \\
+Tracktail (Ours)
+  & $\checkmark$
+  & 0.058 & 0.101 & 0.784
+  & 0.067 & 0.127 & 0.714
+  & 0.225 & 0.352 & 0.786 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}

@@ -442,6 +442,47 @@ def crop_camera_group_to_queries(camera_group, query_coords, min_crop_dim, paddi
     return camera_group_cropped, crops
 
 
+def window_camera_group(camera_group, start, length):
+    """Per-window view of a camera group with per-frame (moving) extrinsics: ext / ext_inv (T,4,4) and center (T,3)
+    sliced to frames [start, start+length), the frames past the end repeating the last pose (as load_multiview_clip
+    repeats the last image). The model indexes a moving camera's ext by the frame WITHIN the clip, so feeding it the
+    whole-video stack would give every window the poses of frames 0..length-1. Static cameras are returned as is."""
+    out = []
+    for cam in camera_group:
+        if not (torch.is_tensor(cam.get('ext')) and cam['ext'].ndim == 3):
+            out.append(cam)
+            continue
+        idx = torch.clamp(torch.arange(start, start + length, device=cam['ext'].device), max=cam['ext'].shape[0] - 1)
+        c = dict(cam)
+        for k in ('ext', 'ext_inv', 'center'):
+            if torch.is_tensor(cam.get(k)) and cam[k].shape[0] == cam['ext'].shape[0]:
+                c[k] = cam[k][idx]
+        out.append(c)
+    return out
+
+
+def crop_moving_camera_group_to_queries(camera_group, query_coords, min_crop_dim, padding=20, frames=None):
+    """crop_camera_group_to_queries for a windowed moving camera group: the crop box of each camera is the union of
+    the boxes obtained with its poses at `frames` (default: first, middle and last frame of the window), so the box
+    keeps covering the points while the camera moves. Returns the cropped (still moving) group and the boxes."""
+    from tracktail.model.cube import _static_cam
+    L = camera_group[0]['ext'].shape[0] if camera_group[0]['ext'].ndim == 3 else 1
+    frames = sorted(set(frames if frames is not None else (0, L // 2, L - 1)))
+    boxes = [crop_camera_group_to_queries([_static_cam(c, t) for c in camera_group], query_coords,
+                                          min_crop_dim=min_crop_dim, padding=padding)[1] for t in frames]
+    crops = []
+    for ci in range(len(camera_group)):
+        b = torch.stack([bx[ci] for bx in boxes])
+        crops.append(torch.cat([b[:, :2].min(0).values, b[:, 2:].max(0).values]))
+    cropped = []
+    for cam, (x1, y1, x2, y2) in zip(camera_group, crops):
+        c = dict(cam)
+        c['offset'] = cam['offset'] + torch.tensor([x1, y1], dtype=torch.int32, device=cam['offset'].device)
+        c['size'] = torch.tensor([x2 - x1, y2 - y1], dtype=torch.int32, device=cam['size'].device)
+        cropped.append(c)
+    return cropped, crops
+
+
 def resize_camera_group(camera_group, target_res):
     camera_group_scaled = []
 
@@ -809,13 +850,19 @@ def run_tracker_encoder_on_videos(
             if crop_pts.shape[1] == 0:
                 crop_pts = coords_chunk                     # fallback (e.g. all not-yet)
 
-            camera_group_chunk, crop_boxes = crop_camera_group_to_queries(
-                camera_group=camera_group,
-                query_coords=crop_pts,
-                min_crop_dim=model.image_size,
-                padding=20,
-                is_2d=is_2d,
-            )
+            if any(torch.is_tensor(c.get('ext')) and c['ext'].ndim == 3 for c in camera_group) and not is_2d:
+                # moving cameras: this window's poses, and a crop that covers the points over the window
+                camera_group_chunk, crop_boxes = crop_moving_camera_group_to_queries(
+                    window_camera_group(camera_group, current_frame, current_clip_len),
+                    query_coords=crop_pts, min_crop_dim=model.image_size, padding=20)
+            else:
+                camera_group_chunk, crop_boxes = crop_camera_group_to_queries(
+                    camera_group=camera_group,
+                    query_coords=crop_pts,
+                    min_crop_dim=model.image_size,
+                    padding=20,
+                    is_2d=is_2d,
+                )
             camera_group_chunk = resize_camera_group(
                 camera_group_chunk,
                 model.image_size,
