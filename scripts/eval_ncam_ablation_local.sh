@@ -18,7 +18,7 @@ NS=${*:-"1 2 3 4 5 6 7 8"}
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-source ~/.setup_env_vars.sh
+[[ -f ~/.setup_env_vars.sh ]] && source ~/.setup_env_vars.sh
 export PATH="$HOME/.pixi/bin:$PATH"
 export PYTHONPATH="/groups/karashchuk/home/karashchukl/builds/vjepa2:$PYTHONPATH"
 export LD_LIBRARY_PATH="$REPO/.pixi/envs/default/lib:$LD_LIBRARY_PATH"

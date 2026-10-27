@@ -29,7 +29,7 @@ POSE_FILE=${POSE_FILE:-pose3d_cached.npz}
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-source ~/.setup_env_vars.sh
+[[ -f ~/.setup_env_vars.sh ]] && source ~/.setup_env_vars.sh
 export PATH="$HOME/.pixi/bin:$PATH"
 export PYTHONPATH="/groups/karashchuk/home/karashchukl/builds/vjepa2:$PYTHONPATH"
 export LD_LIBRARY_PATH="$REPO/.pixi/envs/default/lib:$LD_LIBRARY_PATH"
@@ -40,7 +40,7 @@ OUT_BASE=${OUT_BASE:-/groups/karashchuk/home/ruppk2/results/paper-final-v2/poset
 
 # network name (as in format_tables.ipynb) -> its wandb run folder. Pick the ones to run with NETWORKS
 declare -A RUNS=(
-    # [main_finetune_vzkjqrys]="$WANDB_BASE/run-20260912_115732-vzkjqrys"
+    [main_finetune_vzkjqrys]="$WANDB_BASE/run-20260912_115732-vzkjqrys"
     [main_pretrain_e25w9v86]="$WANDB_BASE/run-20260908_175758-e25w9v86"
     [ablation_dataset_static_kub_only_f4wpvece]="$WANDB_BASE/run-20260908_175634-f4wpvece"
     [ablation_latent_dim_256_lczwsdx3]="$WANDB_BASE/run-20260908_175759-lczwsdx3"
