@@ -53,6 +53,23 @@ def generate_colors(n):
     return colors
 
 
+def generate_ordered_colors(order):
+    """Colors for tracks ranked by `order` (e.g. their left-to-right position): the hue sweeps the full color wheel
+    along the rank, so the colors are organized from left to right, and the saturation / brightness cycle through
+    three levels so that neighbouring tracks (similar hues) still look different."""
+    n = len(order)
+    rank = np.empty(n, dtype=int)
+    rank[np.argsort(order, kind='stable')] = np.arange(n)
+    levels = [(255, 255), (150, 255), (255, 170)]          # (saturation, value)
+    colors = []
+    for r in rank:
+        hue = int(round(170 * r / max(n - 1, 1)))          # 0..170 of OpenCV's 0..180, so red does not wrap around
+        s, v = levels[r % len(levels)]
+        bgr = cv2.cvtColor(np.array([[[hue, s, v]]], dtype=np.uint8), cv2.COLOR_HSV2BGR)[0, 0]
+        colors.append(tuple(int(c) for c in bgr))
+    return colors
+
+
 def _point_visible(point, conf_val, conf_threshold, w, h, vis_val=None):
     """Whether a single keypoint should be drawn at the given frame.
 
@@ -181,6 +198,20 @@ def parse_args():
                         help='Width in pixels of the trail polyline')
     parser.add_argument('--use-gt', action='store_true', default=False,
                         help='Render ground-truth coordinates (coords_true) instead of predictions')
+    parser.add_argument('--gt-visibility', action='store_true', default=False,
+                        help='Render predicted coordinates, but show/hide each point by the ground-truth visibility '
+                             '(vis_true) instead of the predicted confidence/visibility, so every method shows the '
+                             'same points at every frame')
+    parser.add_argument('--color-order-view', type=str, default=None,
+                        help='Color the tracks by their left-to-right order in this camera: the x pixel of the '
+                             'ground truth (coords_true) at the first frame it is visible, so the colors are the same '
+                             'for every method run on the same tracks (see generate_ordered_colors)')
+    parser.add_argument('--color-order-frame', type=int, default=None,
+                        help='With --color-order-view: order by the ground truth at this frame index (negative counts '
+                             'from the end) instead of the first visible frame; a track not visible there uses its '
+                             'visible frame closest to it')
+    parser.add_argument('--color-order-axis', choices=['x', 'y'], default='x',
+                        help='With --color-order-view: x orders the colors left to right, y top to bottom')
     parser.add_argument('--max-points', type=int, default=None,
                         help='Limit rendering to the first N keypoints')
 
@@ -304,6 +335,15 @@ def main():
             vis_pred = vis_pred[..., 0]
         vis_pred = _sigmoid(vis_pred)   # (T, N)
 
+    if args.gt_visibility:
+        if 'vis_true' not in data:
+            raise ValueError('--gt-visibility needs vis_true in the input npz')
+        vis_true = np.asarray(data['vis_true'])[0]           # (T, N) or (T, N, 1)
+        if vis_true.ndim == 3:
+            vis_true = vis_true[..., 0]
+        vis_pred = vis_true.astype(np.float32)               # 1 visible, 0 occluded (already probabilities)
+        conf_pred = np.ones_like(vis_pred)
+
     if args.max_points is not None:
         n = args.max_points
         coords_pred = coords_pred[:, :n]
@@ -367,7 +407,30 @@ def main():
         crop_boxes = [None] * n_cams
 
     # Generate colors for keypoints
-    colors = generate_colors(n_kpts)
+    if args.color_order_view is not None:
+        if is_2d or 'coords_true' not in data:
+            raise ValueError('--color-order-view needs 3D predictions with coords_true')
+        if args.color_order_view not in cam_names:
+            raise ValueError(f'--color-order-view {args.color_order_view} not in {cam_names}')
+        gt = np.asarray(data['coords_true'], dtype=np.float32)[0][:, :n_kpts]        # (T, N, 3)
+        gt_vis = np.isfinite(gt).all(-1)
+        if 'vis_true' in data:
+            vt = np.asarray(data['vis_true'])[0][:, :n_kpts]
+            gt_vis &= (vt[..., 0] if vt.ndim == 3 else vt).astype(bool)
+        T_gt = gt.shape[0]
+        if args.color_order_frame is None:
+            ref = np.argmax(gt_vis, axis=0)                                          # first visible frame, (N,)
+        else:
+            target = args.color_order_frame % T_gt
+            gap = np.where(gt_vis, np.abs(np.arange(T_gt)[:, None] - target), np.iinfo(np.int64).max)
+            ref = np.argmin(gap, axis=0)                                             # visible frame closest to it
+        gt_ref = np.nan_to_num(gt[ref, np.arange(n_kpts)])[None]                     # (1, N, 3)
+        cam = camera_group[cam_names.index(args.color_order_view)]
+        uv = project_points_torch([cam], torch.as_tensor(gt_ref))[0, 0].cpu().numpy()  # (N, 2)
+        key = uv[:, 0 if args.color_order_axis == 'x' else 1]
+        colors = generate_ordered_colors(np.nan_to_num(key, nan=np.inf))
+    else:
+        colors = generate_colors(n_kpts)
 
     # Build readers
     readers, _ = build_video_readers(video_paths)
@@ -388,6 +451,12 @@ def main():
         'trails': args.trails,
         'trail_length': args.trail_length,
         'trail_thickness': args.trail_thickness,
+        'use_gt': args.use_gt,
+        'gt_visibility': args.gt_visibility,
+        'max_points': args.max_points,
+        'color_order_view': args.color_order_view,
+        'color_order_frame': args.color_order_frame,
+        'color_order_axis': args.color_order_axis,
     }
     with open(os.path.join(args.output_dir, 'render_info.json'), 'w') as f:
         json.dump(render_info, f, indent=2)
