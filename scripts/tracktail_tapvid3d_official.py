@@ -129,6 +129,8 @@ def process_trial(model, trial_path, npz_path, args, device, tmp_root):
     if not np.isfinite(q3d).all():
         raise ValueError(f'{(~np.isfinite(q3d).all(-1)).sum()} queries have no finite ground truth at their frame')
     occ = torch.as_tensor(vis[qt, np.arange(N)].astype(np.int64)[:, None])      # (N, 1): visible at the query
+    if args.query_occlusion == 'unknown':
+        occ = None     # no query-frame visibility input; the predicted occlusion is still carried between windows
 
     cg_f = cg_b = camera_group
     q_in = q3d
@@ -188,6 +190,8 @@ def main():
     ap.add_argument('--vis-thresh', type=float, default=TRACKTAIL_VIS_THRESH,
                     help='visibility threshold of the predicted occlusion carried between windows (occlusion embedding); '
                          'score with the same --vis-thresh in tapvid3d_official_metrics.py')
+    ap.add_argument('--query-occlusion', choices=['gt', 'unknown'], default='gt',
+                    help="occlusion input at the query frame: 'gt' = visible (benchmark queries), 'unknown' = none given")
     ap.add_argument('--n-overlap', type=int, default=8)
     ap.add_argument('--max-kpts', type=int, default=2500, help='keypoint chunk size (as eval_testset_metrics.py)')
     ap.add_argument('--device', default='cuda:0')

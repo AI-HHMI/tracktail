@@ -1387,11 +1387,17 @@ def run_inference(
     cam_names_filter=None,
     pose_file=None,
     vis_thresh=TRACKTAIL_VIS_THRESH,
+    query_occlusion='gt',
 ):
     """Run inference on one trial with an already-loaded model.
 
     vis_thresh: visibility threshold for the predicted occlusion carried between windows (see
     run_tracker_encoder_on_videos).
+
+    query_occlusion: per-camera occlusion state given to the model at each point's query frame
+    (occlusion_embedding models). 'gt' (default) = ground-truth visibility at the query frame;
+    'unknown' = no visibility input (-1 for every camera), i.e. the model only gets the 3D query.
+    Later windows always carry the model's own predicted occlusion either way.
 
     Factored out of main() so a caller (e.g. a batch driver) can load the model
     once and reuse it across many trials. If outpath is given the outputs are
@@ -1473,8 +1479,14 @@ def run_inference(
     # occlusion cams dim matches the model input. None when the trial has no visibility.
     vis_gt_used = vis_gt_raw[..., cam_indices_used] if vis_gt_raw is not None else None
 
+    if query_occlusion not in ('gt', 'unknown'):
+        raise ValueError(f"query_occlusion must be 'gt' or 'unknown', got {query_occlusion!r}")
+    # GT visibility used as the query-frame occlusion INPUT (None -> unknown). Kept separate from
+    # vis_gt_used, which the per-camera occlusion metric still needs.
+    vis_gt_input = vis_gt_used if query_occlusion == 'gt' else None
+
     def _subject_occlusion(s):
-        vis_used_s = vis_gt_used[s] if vis_gt_used is not None else None
+        vis_used_s = vis_gt_input[s] if vis_gt_input is not None else None
         return occlusion_at_query(vis_used_s, per_subject_query_times[s],
                                   per_subject_valid_masks[s], start_frame)
 
@@ -1553,7 +1565,7 @@ def run_inference(
     else:
         # Flat (all subjects concatenated, s-major): build occlusion in the same order as
         # query_points (torch.cat of per_subject_queries). None if the trial has no vis.
-        if vis_gt_used is not None:
+        if vis_gt_input is not None:
             occ_parts = [_subject_occlusion(s) for s in range(len(per_subject_queries))]
             occlusion_flat = (torch.cat(occ_parts, dim=0)
                               if len(occ_parts) > 0 else None)
@@ -1671,6 +1683,7 @@ def run_inference(
     outputs['start_frame'] = start_frame
     outputs['n_frames_requested'] = n_frames
     outputs['n_overlap'] = n_overlap
+    outputs['query_occlusion'] = query_occlusion
     outputs['per_subject'] = per_subject
     outputs['n_cams_total'] = n_cams_total
     outputs['cam_indices_used'] = np.array(cam_indices_used, dtype=np.int32)

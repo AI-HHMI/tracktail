@@ -19,6 +19,8 @@
 #   NETWORKS="all" bash tracktail_cached.sh        every network listed in RUNS below
 #
 # Results: $OUT_BASE/<network>_canonical_cached/ (for the default network: main_finetune_vzkjqrys_canonical_cached).
+# QUERY_OCC=unknown: no GT visibility input at the query frame (default gt; predicted occlusion is still carried
+#   between windows).
 # Env overrides: NETWORKS (names from RUNS below, separated by spaces; "all" for every one), OUT_BASE, POSE_FILE (default
 # pose3d_cached.npz), DEVICE (default cuda:0).
 
@@ -78,6 +80,7 @@ for NAME in $NETWORKS; do
             --view-seed     0 \
             --device        "${DEVICE:-cuda:0}" \
             --pose-file     "$POSE_FILE" \
+            ${QUERY_OCC:+--query-occlusion $QUERY_OCC} \
             --cam-names     ${CANONICAL_CAMS[$DATASET]}
     done
 

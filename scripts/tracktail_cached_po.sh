@@ -18,6 +18,8 @@
 #   bash tracktail_cached_po.sh 4
 #   bash tracktail_cached_po.sh "4 9" point-odyssey-human
 #
+# QUERY_OCC=unknown: no GT visibility input at the query frame (default gt; predicted occlusion is still carried
+#   between windows).
 # Env overrides: OUT_BASE, POSE_FILE (default pose3d.npz), DEVICE (default cuda:0).
 
 set -e
@@ -58,6 +60,7 @@ for N in $CAMS; do
         --view-seed     0 \
         --device        "${DEVICE:-cuda:0}" \
         --pose-file     "$POSE_FILE" \
+        ${QUERY_OCC:+--query-occlusion $QUERY_OCC} \
         $CAM_ARG
 done
 

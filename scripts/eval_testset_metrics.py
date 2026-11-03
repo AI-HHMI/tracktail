@@ -435,6 +435,9 @@ def main():
     ap.add_argument('--vis-thresh', type=float, default=TRACKTAIL_VIS_THRESH,
                     help='visibility threshold (sigmoid of the vis logit) for the occlusion state carried between '
                          f'windows in inference and for AJ / occlusion accuracy (default {TRACKTAIL_VIS_THRESH})')
+    ap.add_argument('--query-occlusion', choices=['gt', 'unknown'], default='gt',
+                    help="per-camera occlusion input at each point's query frame: 'gt' = ground-truth visibility, "
+                         "'unknown' = none given (-1). The predicted occlusion is carried between windows either way")
     ap.add_argument('--device', default='cuda:0')
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
@@ -512,7 +515,8 @@ def main():
                     device=ms['device'], max_kpts=w['max_kpts'], n_views=w['n_views'],
                     seed=args.view_seed, outpath=w['npz'], query_first=True,
                     motion_margin=args.motion_margin, cam_names_filter=w['cam_names'],
-                    pose_file=args.pose_file, vis_thresh=args.vis_thresh)
+                    pose_file=args.pose_file, vis_thresh=args.vis_thresh,
+                    query_occlusion=args.query_occlusion)
                 torch.cuda.empty_cache()
                 m = (eval_outputs(out, cfg['thresholds'], cfg['survival'], vis_thresh=args.vis_thresh) if args.legacy_metrics
                      else eval_outputs_paper(out, ds, cfg['thresholds'], cfg['survival'], vis_thresh=args.vis_thresh))

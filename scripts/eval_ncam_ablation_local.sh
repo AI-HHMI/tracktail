@@ -10,6 +10,8 @@
 #   bash eval_ncam_ablation_local.sh [N ...]      default: 1 2 3 4 5 6 7 8
 #
 # Results: $OUT_BASE/nviews-N/, and ncam_ablation_summary.csv over all N at the end.
+# QUERY_OCC=unknown: no GT visibility input at the query frame (default gt; predicted occlusion is still carried
+#   between windows).
 # Env overrides: OUT_BASE, DEVICE (default cuda:0).
 
 set -e
@@ -40,6 +42,7 @@ for N in $NS; do
         --view-seed     0 \
         --device        "${DEVICE:-cuda:0}" \
         --pose-file     "pose3d_ncam${N}_512.npz" \
+        ${QUERY_OCC:+--query-occlusion $QUERY_OCC} \
         --cam-names     $CAMS
 done
 
