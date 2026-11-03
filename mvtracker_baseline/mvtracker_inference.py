@@ -97,8 +97,10 @@ def build_model(checkpoint, device, dataset_name=None, official_settings=False, 
         if vis_threshold is not None:
             kwargs['visibility_threshold'] = vis_threshold
         print(f"Loading MVTracker with the official settings for {dataset_name}: {kwargs}")
-        model = torch.hub.load("ethz-vlg/mvtracker", "mvtracker_predictor", pretrained=False,
-                               device=str(device), predictor_kwargs=kwargs)
+        hub_dir = os.environ.get("MVT_HUB_DIR")   # optional local clone of ethz-vlg/mvtracker (default: GitHub)
+        model = torch.hub.load(hub_dir or "ethz-vlg/mvtracker", "mvtracker_predictor", pretrained=False,
+                               device=str(device), predictor_kwargs=kwargs,
+                               **({"source": "local"} if hub_dir else {}))
     else:
         print("Loading MVTracker…")
         model = torch.hub.load("ethz-vlg/mvtracker", "mvtracker", pretrained=False, device=device)
@@ -235,6 +237,12 @@ def load_native_gt_depths(dataset_name, native_trial_dir, cam_names, frame_numbe
         depths = native.load_kubric_gt_depths(Path(native_trial_dir), views, frame_numbers)
     elif dataset_name == "cmupanoptic_3dgs":
         depths = native.load_panoptic_gt_depths(Path(native_trial_dir), views, frame_numbers)
+    elif dataset_name == "dex_ycb":
+        # Kinect sensor depth shipped with MVTracker's dex-ycb-multiview: view_XX/depth/{t:05d}.png, uint16 mm
+        # (aligned to the color camera); read as /1000 -> metres like MVTracker's DexYCB loader. 0 = no depth.
+        depths = np.stack([[cv2.imread(str(Path(native_trial_dir) / f"view_{v:02d}" / "depth" / f"{int(t):05d}.png"),
+                                       cv2.IMREAD_ANYDEPTH).astype(np.float32) / 1000.0 for v in views]
+                           for t in frame_numbers]).astype(np.float32)
     else:
         raise ValueError(f"no GT depths for {dataset_name!r}")
     if depths.shape[-2:] != (H, W):
@@ -323,6 +331,7 @@ def process_trial(
     dataset_name: str | None = None,
     official_settings: bool = False,
     native_trial_dir: str | None = None,
+    depth_resize: str = "linear",
 ):
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
@@ -468,7 +477,8 @@ def process_trial(
             f_r = cv2.resize(frames_all[t, c], (new_W_rp, new_H_rp))
             frames_padded[t, c, pad_top_rp:pad_top_rp + new_H_rp, pad_left_rp:pad_left_rp + new_W_rp] = f_r
         for c in range(C_depth):
-            d_r = cv2.resize(depths_np[t, c], (new_W_rp, new_H_rp), interpolation=cv2.INTER_LINEAR)
+            d_r = cv2.resize(depths_np[t, c], (new_W_rp, new_H_rp),
+                             interpolation=cv2.INTER_NEAREST if depth_resize == "nearest" else cv2.INTER_LINEAR)
             depths_padded[t, c, pad_top_rp:pad_top_rp + new_H_rp, pad_left_rp:pad_left_rp + new_W_rp] = d_r
     frames_all = frames_padded
     depths_np  = depths_padded
@@ -669,6 +679,9 @@ def parse_args():
     p.add_argument("--native-root", default=None,
                    help="With --depth-type gt-native: folder of the dataset's own trials, <native_root>/<session>/ "
                         "(kubric: .../kubric-multiview/test, panoptic: .../panoptic-multiview)")
+    p.add_argument("--depth-resize", default="linear", choices=["linear", "nearest"],
+                   help="Interpolation for resizing depth maps to 256x256 (default linear, as in all paper runs); "
+                        "'nearest' avoids blending the holes (0) of sensor depth into valid depths")
     p.add_argument("--vis-threshold", type=float, default=None,
                    help="With --official-settings: replace the visibility threshold of the official settings of each "
                         "dataset (e.g. 0.5); the probability of being visible is saved as vis_prob in every output")
@@ -733,6 +746,7 @@ def main():
                 dataset_name=dataset_name,
                 official_settings=args.official_settings,
                 native_trial_dir=(os.path.join(args.native_root, session) if args.native_root else None),
+                depth_resize=args.depth_resize,
             )
 
     print("Done.")
