@@ -312,7 +312,7 @@ def check_config_compatibility(checkpoint, config, strict=True):
         print(f'  [info] model config differs on non-critical keys: {sorted(benign)}')
 
 
-# Prefix of every video-backbone parameter inside TrackerEncoder/ScorerEncoder.
+# Prefix of every video-backbone parameter inside TrackerEncoder.
 _VIDEO_ENCODER_PREFIX = 'scene_encoder.encoder.'
 
 

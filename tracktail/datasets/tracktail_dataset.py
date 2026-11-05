@@ -113,8 +113,7 @@ def rotate_camera_image_plane_3d(cam, angle_deg):
     crops to the largest inscribed border-free rectangle. Updates ext/ext_inv/center (Z-roll),
     principal point (mat), and size; offset unchanged.
 
-    Returns (cam_rot, (M_2x3, (cw_i, ch_i))). Shared by augment_image_rotation (base-load, gated)
-    and rotate_anchor_3d (scorer loop, forced angle).
+    Returns (cam_rot, (M_2x3, (cw_i, ch_i))). Used by augment_image_rotation (base-load, gated).
     """
     angle_rad = np.radians(angle_deg)
     cos_a = np.cos(angle_rad)
@@ -645,8 +644,7 @@ class TracktailDataset(Dataset):
         self.causal_masking = config.dataset[split].get('causal_masking', False)
         self.no_nan_coords = config.dataset[split].get('no_nan_coords', True)
         # When no_nan_coords is off, keep partially-missing tracks but drop points
-        # observed in fewer than min_valid_frames frames (avoids all-/mostly-missing
-        # points the scorer can't meaningfully evaluate).
+        # observed in fewer than min_valid_frames frames (avoids all-/mostly-missing points).
         self.min_valid_frames = config.dataset[split].get('min_valid_frames', 1)
 
         # 3D sphere subvolume crop augmentation

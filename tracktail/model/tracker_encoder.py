@@ -534,8 +534,7 @@ class TrackerEncoder(nn.Module):
         passed through unchanged.
 
         kpt_chunk: if set (>0) and N > kpt_chunk, encode the scene ONCE then run the
-        per-point query/decoder work in point-slices reusing scene_features (mirrors
-        ScorerEncoder.score). Numerically identical to the single pass because the decoder
+        per-point query/decoder work in point-slices reusing scene_features. Numerically identical to the single pass because the decoder
         has no cross-point attention and the scene scalars are computed over all N in
         forward(). Disabled for gridnorm, whose per-camera gauge solve couples points.
 
