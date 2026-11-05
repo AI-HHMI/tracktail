@@ -11,12 +11,11 @@
 #   bash arrow_ncam_ablation.sh [N ...]       default: 1 2 3 4 5 6 7 8
 #   bash arrow_ncam_ablation.sh 1 4 8         run selected camera counts
 #
-# Results: $ABLATION_ROOT/nviews-N/ and $ABLATION_ROOT/ncam_ablation_summary.csv.
+# Results: $ABLATION_ROOT/nviews-N/ and $ABLATION_ROOT/ncam_ablation_summary.csv
+#   (default ABLATION_ROOT = $ARROW_OUT_BASE/ncam-ablation-dexycb).
+# Paths come from paper.env (TRACKTAIL_DATA, ARROW_CKPT, ARROW_PYTHON; ARROW's uv env: cd $ARROW_REPO && uv sync).
 # Env overrides: ABLATION_ROOT, DATASET_ROOT, DEVICE (default cuda:0), SCALE_MODE (gt-tracks | cameras), WINDOW,
-# MAX_ANCHORS, ARROW_PYTHON, CKPT. On LSF, submit with e.g.:
-#   bsub -J arrow-ncam -W 24:00 -n 8 -q gpu_l4 -gpu 'num=1' \
-#       -o "$HOME/logs/arrow/ncam-%J.out" -e "$HOME/logs/arrow/ncam-%J.err" \
-#       bash arrow_ncam_ablation.sh
+# MAX_ANCHORS, ARROW_PYTHON, CKPT. Runs locally; on a cluster wrap it in your scheduler (e.g. bsub ... bash arrow_ncam_ablation.sh).
 
 set -euo pipefail
 
@@ -25,35 +24,23 @@ if [[ ${#NS[@]} -eq 0 ]]; then NS=(1 2 3 4 5 6 7 8); fi
 
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO="$(cd "$SCRIPTS/.." && pwd -P)"
-DATASET_ROOT=${DATASET_ROOT:-/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6}
-ABLATION_ROOT=${ABLATION_ROOT:-/groups/karashchuk/home/karashchukl/results/paper-final-v2/arrow-outputs/ncam-ablation-dexycb}
+source "$REPO/scripts/paper_common.sh"
+BASELINE_LD=${LD_LIBRARY_PATH:-}   # LD_LIBRARY_PATH without the pixi libs of paper_common.sh (those are for the pixi python)
+while [[ "$BASELINE_LD" == "$PAPER_REPO/.pixi/envs/default/lib:"* ]]; do BASELINE_LD=${BASELINE_LD#"$PAPER_REPO/.pixi/envs/default/lib:"}; done
+DATASET_ROOT=${DATASET_ROOT:-$TRACKTAIL_DATA}
+ABLATION_ROOT=${ABLATION_ROOT:-$ARROW_OUT_BASE/ncam-ablation-dexycb}
 DEVICE=${DEVICE:-cuda:0}
 SCALE_MODE=${SCALE_MODE:-gt-tracks}
 WINDOW=${WINDOW:-24}
 MAX_ANCHORS=${MAX_ANCHORS:-24}
 QUERY_SEED=${QUERY_SEED:-0}
 
-if [[ -z "${ARROW_PYTHON:-}" ]]; then
-    if [[ -x "$REPO/../arrow/.venv-cluster/bin/python" ]]; then
-        ARROW_PYTHON="$REPO/../arrow/.venv-cluster/bin/python"
-    else
-        ARROW_PYTHON="$REPO/../arrow/.venv/bin/python"
-    fi
-fi
-CKPT=${CKPT:-/groups/karashchuk/home/karashchukl/weights/arrow}
+CKPT=${CKPT:-$ARROW_CKPT}
 if [[ ! -x "$ARROW_PYTHON" ]]; then
-    echo "ARROW Python not executable: $ARROW_PYTHON (see arrow_baseline/submit_arrow.sh for cluster setup)" >&2
+    echo "ARROW Python not executable: $ARROW_PYTHON (set ARROW_PYTHON in paper.env; cd \$ARROW_REPO && uv sync)" >&2
     exit 1
 fi
-
-if [[ -x "$REPO/.pixi/envs/default/bin/python" ]]; then
-    METRICS_PYTHON=("$REPO/.pixi/envs/default/bin/python")
-elif command -v pixi >/dev/null 2>&1; then
-    METRICS_PYTHON=(pixi run python)
-else
-    echo "Cannot find the posetail pixi Python for mvtracker_metrics.py" >&2
-    exit 1
-fi
+read -ra METRICS_PYTHON <<< "$PIXI_PYTHON"   # the pixi env runs mvtracker_metrics.py
 
 mkdir -p "$ABLATION_ROOT"
 cd "$SCRIPTS"
@@ -69,7 +56,7 @@ for N in "${NS[@]}"; do
     echo ""
     echo "=== ARROW n_views=$N (${CAMS[*]}), pose=$POSE_FILE -> $OUT_ROOT ==="
 
-    "$ARROW_PYTHON" arrow_inference.py \
+    env LD_LIBRARY_PATH="$BASELINE_LD" "$ARROW_PYTHON" arrow_inference.py \
         --dataset-root "$DATASET_ROOT" \
         --output-root "$OUT_ROOT" \
         --datasets dex_ycb \

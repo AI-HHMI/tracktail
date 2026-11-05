@@ -13,8 +13,10 @@
 #   bash arrow_100.sh
 #   bash arrow_100.sh canonical "dex_ycb cmupanoptic_3dgs"
 #
-# Env overrides: OUTPUT_ROOT, DEVICE (default cuda:0), SCALE_MODE (gt-tracks | cameras, default gt-tracks), WINDOW
-# (default 24), MAX_ANCHORS (default 24), ARROW_PYTHON (default ../arrow/.venv-cluster or .venv), CKPT.
+# Env overrides: DATASET_ROOT, OUTPUT_ROOT, DEVICE (default cuda:0), SCALE_MODE (gt-tracks | cameras, default gt-tracks), WINDOW
+# (default 24), MAX_ANCHORS (default 24), ARROW_PYTHON, CKPT.
+# Results: $OUTPUT_ROOT (default $ARROW_OUT_BASE/paper-canonicalcams-cached-100).
+# Paths come from paper.env (TRACKTAIL_DATA, ARROW_CKPT, ARROW_PYTHON; ARROW's uv env: cd $ARROW_REPO && uv sync).
 
 set -e
 
@@ -32,18 +34,15 @@ if [[ "$MODE" != "canonical" ]]; then
 fi
 
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$SCRIPTS/.."
-if [[ -z "$ARROW_PYTHON" ]]; then
-    if [[ -x "$REPO/../arrow/.venv-cluster/bin/python" ]]; then ARROW_PYTHON="$REPO/../arrow/.venv-cluster/bin/python"
-    else ARROW_PYTHON="$REPO/../arrow/.venv/bin/python"; fi   # cd ../arrow && uv sync
-fi
-CKPT=${CKPT:-/groups/karashchuk/home/karashchukl/weights/arrow}   # local copy of the ifradlin/arrow hub weights
-
-DATASET_ROOT=/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6
-OUTPUT_ROOT=${OUTPUT_ROOT:-/groups/karashchuk/home/karashchukl/results/paper-final-v2/arrow-outputs/paper-canonicalcams-cached-100}
-
+REPO="$(cd "$SCRIPTS/.." && pwd)"
+source "$REPO/scripts/paper_common.sh"
+BASELINE_LD=${LD_LIBRARY_PATH:-}   # LD_LIBRARY_PATH without the pixi libs of paper_common.sh (those are for the pixi python)
+while [[ "$BASELINE_LD" == "$PAPER_REPO/.pixi/envs/default/lib:"* ]]; do BASELINE_LD=${BASELINE_LD#"$PAPER_REPO/.pixi/envs/default/lib:"}; done
+CKPT=${CKPT:-$ARROW_CKPT}             # local copy of the ifradlin/arrow hub weights (baselines/setup.sh)
+PYTHON=$PIXI_PYTHON                   # metrics + combine (ARROW itself runs in $ARROW_PYTHON)
+DATASET_ROOT=${DATASET_ROOT:-$TRACKTAIL_DATA}
+OUTPUT_ROOT=${OUTPUT_ROOT:-$ARROW_OUT_BASE/paper-canonicalcams-cached-100}
 cd "$SCRIPTS"
-if [[ -x "$REPO/.pixi/envs/default/bin/python" ]]; then PYTHON="$REPO/.pixi/envs/default/bin/python"; else PYTHON="pixi run python"; fi
 
 declare -A CANONICAL_CAMS=(
     [kubric-multiview]="view_0 view_1 view_2 view_3"
@@ -55,7 +54,7 @@ echo "starting arrow 100-point eval ($POSE_FILE): $DATASETS -> $OUTPUT_ROOT"
 
 # run ARROW inference (all cameras jointly), per dataset so each runs its own canonical cameras
 for DATASET in $DATASETS; do
-    $ARROW_PYTHON arrow_inference.py \
+    env LD_LIBRARY_PATH="$BASELINE_LD" "$ARROW_PYTHON" arrow_inference.py \
         --dataset-root $DATASET_ROOT \
         --output-root $OUTPUT_ROOT \
         --datasets $DATASET \

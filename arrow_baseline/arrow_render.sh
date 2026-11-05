@@ -4,7 +4,7 @@
 # ARROW structure:   <output-dir>/<dataset>/<session>_<trial>.npz   (arrow_inference.py)
 #
 # Renders go to $RENDER_ROOT/arrow-renders/<basename of output-dir>/<dataset>/<session>_<trial>/ (default RENDER_ROOT
-# /groups/karashchuk/home/karashchukl/renders). Frames before a track's query frame are hidden (render_video.py).
+# $TRACKTAIL_RESULTS/renders). Frames before a track's query frame are hidden (render_video.py).
 # Outputs written before arrow_inference.py saved video_paths get them added from metadata_path and cam_names_used
 # (in a temporary copy; the prediction file is not changed).
 #
@@ -12,8 +12,8 @@
 #   bash arrow_render.sh <output-dir> [dataset ...]
 #
 # Examples:
-#   bash arrow_render.sh /groups/karashchuk/home/karashchukl/results/paper-final-v2/arrow-outputs/paper-canonical-cached-100
-#   bash arrow_render.sh /groups/karashchuk/home/karashchukl/results/paper-final-v2/arrow-outputs/paper-canonical-cached-100 dex_ycb
+#   bash arrow_render.sh $ARROW_OUT_BASE/paper-canonicalcams-cached-100
+#   bash arrow_render.sh $ARROW_OUT_BASE/paper-canonicalcams-cached-100 dex_ycb
 
 set -e
 
@@ -23,11 +23,12 @@ shift
 DATASETS=("${@:-*}")
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export PYTHONPATH="$REPO:$PYTHONPATH"
+source "$REPO/scripts/paper_common.sh"
+export PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}"
 
-if [[ -x "$REPO/.pixi/envs/default/bin/python" ]]; then PYTHON="$REPO/.pixi/envs/default/bin/python"; else PYTHON="pixi run python"; fi
+PYTHON=$PIXI_PYTHON
 SCRIPT="$REPO/scripts/render_video.py"
-RENDER_ROOT=${RENDER_ROOT:-/groups/karashchuk/home/karashchukl/renders}
+RENDER_ROOT=${RENDER_ROOT:-$TRACKTAIL_RESULTS/renders}
 RENDER_BASE=$RENDER_ROOT/arrow-renders/$(basename "$OUTPUT_DIR")
 
 TMP=$(mktemp -d)

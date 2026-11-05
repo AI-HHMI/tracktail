@@ -13,9 +13,9 @@
 # its own camera's coordinates (--reference target; the ground truth is per-frame camera coordinates) and one
 # per-video median scale (Eq. 11, --scale-mode gt-tracks).
 #
-# Submit all datasets:        bash arrow_tapvid3d.sh
-# Submit a subset by name:    bash arrow_tapvid3d.sh tapvid3d_pstudio tapvid3d_adt
-# Run here instead of bsub:   LOCAL=1 DEVICE=cuda:0 bash arrow_tapvid3d.sh tapvid3d_pstudio
+# Run all datasets here:      bash arrow_tapvid3d.sh
+# Run a subset by name:       DEVICE=cuda:0 bash arrow_tapvid3d.sh tapvid3d_pstudio tapvid3d_adt
+# Optional, LSF cluster:      SUBMIT=1 bash arrow_tapvid3d.sh      (one bsub job per dataset; QUEUE, WALL, LOGS)
 # Worker (run by bsub):       bash arrow_tapvid3d.sh --worker <dataset> [dataset ...]
 #
 # Env overrides:
@@ -26,26 +26,30 @@
 #   REFERENCE=first: every target in the first camera's frame (the world-coordinate task; output folder -world);
 #            the camera-coordinate metrics of that folder are meaningless, score it with tapvid3d_world_metrics.py.
 #   NO_DT_CROP=1 disables the DriveTrack crop + recentering (the authors' protocol, issue #3 of ifradlin/arrow).
-#   WINDOW (300), DEVICE (cuda:0), QUEUE (gpu_h100), WALL (24:00), OUT_BASE / OUT, ARROW_PYTHON, CKPT, LOGS.
-# One bsub job per dataset. A full-context ADT video (300 frames, 512x512) takes ~80 s on an RTX PRO 6000, so SPLIT=full
+#   WINDOW (300), DEVICE (cuda:0), OUT_BASE (default $ARROW_OUT_BASE) / OUT, ARROW_PYTHON, CKPT (default $ARROW_CKPT),
+#   DATASET_ROOT (default $TRACKTAIL_DATA); with SUBMIT=1 also QUEUE (gpu_h100), WALL (24:00), LOGS ($TRACKTAIL_LOGS/arrow).
+# With SUBMIT=1, one bsub job per dataset. A full-context ADT video (300 frames, 512x512) takes ~80 s on an RTX PRO 6000, so SPLIT=full
 # adt (~1900 videos) does not fit one 24 h job: predictions already in <dataset>/ are reused, so just submit again.
 #
 # Results go to $OUT (default $OUT_BASE/tapvid3d-<split>-q<queries>/). The ARROW numbers to compare to the paper are
 # tapvid3d_official.md with SPLIT=minival QUERIES=xyt; summary.csv / metrics.md with QUERIES=first are the ones to put
 # next to tracktail's.
 
-SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"   # physical path: the nodes do not see ~/ghome
-REPO="$SCRIPTS/.."
-LOGS=${LOGS:-/groups/karashchuk/home/karashchukl/logs/arrow}
-DATASET_ROOT=/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6
-OUT_BASE=${OUT_BASE:-/groups/karashchuk/home/karashchukl/results/paper-final-v2/arrow-outputs}
+SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"   # physical path (cluster nodes may not see symlinked homes)
+REPO="$(cd "$SCRIPTS/.." && pwd -P)"
+source "$REPO/scripts/paper_common.sh"
+BASELINE_LD=${LD_LIBRARY_PATH:-}   # LD_LIBRARY_PATH without the pixi libs of paper_common.sh (those are for the pixi python)
+while [[ "$BASELINE_LD" == "$PAPER_REPO/.pixi/envs/default/lib:"* ]]; do BASELINE_LD=${BASELINE_LD#"$PAPER_REPO/.pixi/envs/default/lib:"}; done
+LOGS=${LOGS:-$TRACKTAIL_LOGS/arrow}
+DATASET_ROOT=${DATASET_ROOT:-$TRACKTAIL_DATA}
+OUT_BASE=${OUT_BASE:-$ARROW_OUT_BASE}
 SPLIT=${SPLIT:-minival}
 QUERIES=${QUERIES:-xyt}
 REFERENCE=${REFERENCE:-target}   # target: camera coordinates (default); first: world frame = the first camera
 REFSUF=$([[ "$REFERENCE" == "first" ]] && echo "-world")
 OUT=${OUT:-$OUT_BASE/tapvid3d-${SPLIT}-q${QUERIES}${REFSUF}}
 WINDOW=${WINDOW:-300}
-CKPT=${CKPT:-/groups/karashchuk/home/karashchukl/weights/arrow}   # local copy of the ifradlin/arrow hub weights
+CKPT=${CKPT:-$ARROW_CKPT}   # local copy of the ifradlin/arrow hub weights
 
 DATASETS="tapvid3d_pstudio tapvid3d_drivetrack tapvid3d_adt"
 QUEUE=${QUEUE:-gpu_h100}
@@ -56,20 +60,17 @@ if [[ "$QUERIES" != "xyt" && "$QUERIES" != "first" ]]; then echo "QUERIES must b
 
 if [[ "$1" != "--worker" ]]; then
     SELF="$SCRIPTS/$(basename "${BASH_SOURCE[0]}")"
-    if [[ -n "$LOCAL" ]]; then
+    if [[ -z "$SUBMIT" ]]; then   # default: run here
         exec bash "$SELF" --worker ${@:-$DATASETS}
     fi
+    command -v bsub >/dev/null 2>&1 || { echo "SUBMIT=1 needs LSF (bsub)" >&2; exit 1; }
     mkdir -p "$LOGS"
-    ENVS="SPLIT=$SPLIT QUERIES=$QUERIES REFERENCE=$REFERENCE OUT=$OUT WINDOW=$WINDOW CKPT=$CKPT"
+    ENVS="SPLIT=$SPLIT QUERIES=$QUERIES REFERENCE=$REFERENCE OUT=$OUT WINDOW=$WINDOW CKPT=$CKPT DATASET_ROOT=$DATASET_ROOT"
     [[ -n "$ARROW_PYTHON" ]] && ENVS="$ENVS ARROW_PYTHON=$ARROW_PYTHON"
     for DS in ${@:-$DATASETS}; do
         NAMEJ="arrow-${DS}-${SPLIT}-q${QUERIES}${REFSUF}"
         CMD="env HF_HUB_OFFLINE=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True $ENVS bash $SELF --worker $DS"
-        if command -v bsub >/dev/null 2>&1; then
-            bsub -J "$NAMEJ" -W "$WALL" -n 8 -q "$QUEUE" -gpu "num=1" -e "$LOGS/$NAMEJ-%J.err" -o "$LOGS/$NAMEJ-%J.out" "$CMD"
-        else
-            ssh -n -o BatchMode=yes login2 "bsub -J '$NAMEJ' -W '$WALL' -n 8 -q '$QUEUE' -gpu 'num=1' -e '$LOGS/$NAMEJ-%J.err' -o '$LOGS/$NAMEJ-%J.out' \"$CMD\""
-        fi
+        bsub -J "$NAMEJ" -W "$WALL" -n 8 -q "$QUEUE" -gpu "num=1" -e "$LOGS/$NAMEJ-%J.err" -o "$LOGS/$NAMEJ-%J.out" "$CMD"
     done
     echo "logs: $LOGS   results: $OUT"
     exit 0
@@ -81,15 +82,9 @@ shift
 export HF_HUB_OFFLINE=1
 export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
 
-# ARROW's uv environment: .venv-cluster (built on login2, python on /groups, see submit_arrow.sh) when it exists
-if [[ -z "$ARROW_PYTHON" ]]; then
-    if [[ -x "$REPO/../arrow/.venv-cluster/bin/python" ]]; then ARROW_PYTHON="$REPO/../arrow/.venv-cluster/bin/python"
-    else ARROW_PYTHON="$REPO/../arrow/.venv/bin/python"; fi   # cd ../arrow && uv sync
-fi
-# the pixi env needs its own libstdc++ on the nodes (as scripts/tracktail_tapvid3d.sh); only for its python, not ARROW's
-if [[ -x "$REPO/.pixi/envs/default/bin/python" ]]; then
-    PYTHON="env LD_LIBRARY_PATH=$REPO/.pixi/envs/default/lib:$LD_LIBRARY_PATH $REPO/.pixi/envs/default/bin/python"
-else PYTHON="pixi run python"; fi
+# ARROW's uv environment ($ARROW_PYTHON, paper.env), run without the pixi libs
+ARROW_RUN="env LD_LIBRARY_PATH=$BASELINE_LD $ARROW_PYTHON"
+PYTHON=$PIXI_PYTHON
 
 QUERY_ARGS=$([[ "$QUERIES" == "xyt" ]] && echo "--queries-xyt" || echo "--query-first")
 TRIALS_JSON="$SCRIPTS/tapvid3d_minival.json"
@@ -124,7 +119,7 @@ EOF
     [[ "$DS" == "tapvid3d_drivetrack" && -z "$NO_DT_CROP" ]] && EXTRA="--crop-top 394 --recenter"
 
     echo "starting arrow tapvid3d eval: $DS ($SPLIT, queries $QUERIES) -> $OUT"
-    (cd "$SCRIPTS" && $ARROW_PYTHON arrow_inference.py \
+    (cd "$SCRIPTS" && $ARROW_RUN arrow_inference.py \
         --dataset-root "$ROOT" \
         --output-root  "$OUT" \
         --datasets     "$DS" \
