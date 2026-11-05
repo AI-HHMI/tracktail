@@ -4,9 +4,7 @@
 calibrated cameras and a set of 3D query points. It returns each point's 3D trajectory and
 visibility over time.
 
-To reproduce the paper, use the [`paper` branch](https://github.com/AI-HHMI/tracktail/tree/paper) (configs, drivers,
-baselines), [tracktail-paper](https://github.com/AI-HHMI/tracktail-paper) (tables and figures) and
-[tracktail-preprocessing](https://github.com/AI-HHMI/tracktail-preprocessing) (dataset converters).
+To reproduce the paper, see the [`paper` branch](https://github.com/AI-HHMI/tracktail/tree/paper).
 
 - Uses only RGB video and camera calibration. No depth sensor and no monocular depth model.
 - Works with any number of cameras (1–N) and different rigs, because coordinates are normalized
@@ -233,8 +231,8 @@ pixi run python scripts/inference_video.py --help     # windowed inference over 
 - Data lives under `<prefix>/<dataset>/<split>/<session>/<trial>/`, with each trial in the same
   layout as above (`metadata.yaml`, `pose3d.npz`/`pose2d.npz`, `img/` or `vid/`).
 - Datasets: Multi-View Kubric, Multiview Point Odyssey (Human/Animal), Panoptic Studio, DexYCB,
-  plus 2D-only sets. Converters for the public datasets are in
-  [tracktail-preprocessing](https://github.com/AI-HHMI/tracktail-preprocessing).
+  plus 2D-only sets. How to get the paper's datasets is described on the
+  [`paper` branch](https://github.com/AI-HHMI/tracktail/tree/paper).
 - Sampling (cameras, keypoints, crops, augmentation, dataset balancing) is set in
   `[dataset.train]` in the config.
 
