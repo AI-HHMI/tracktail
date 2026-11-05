@@ -11,34 +11,6 @@ export NCCL_SHM_DISABLE=0
 
 d=$(date +d%dh%H)
 
-
-# bsub -J en3-$d -e ~/logs/tracktail/en3-$d.err -o ~/logs/tracktail/en3-$d.out \
-#     -n 48 -q gpu_h200 -R "span[hosts=1]" -gpu "num=4" -W 36:00 \
-#     pixi run python train.py --config-path configs/config_encoder_3d_finetuning_nograd.toml \
-#     --devices -1 --strategy ddp_find_unused_parameters_true
-
-# bsub -J enf-$d -e ~/logs/tracktail/enf-$d.err -o ~/logs/tracktail/enf-$d.out \
-#     -n 48 -q gpu_h200 -R "span[hosts=1]" -gpu "num=4" -W 96:00 \
-#     pixi run python train.py --config-path configs/archive/config_encoder_3d_finetuning_h100.toml \
-#     --devices -1 --strategy ddp_find_unused_parameters_true
-
-# bsub -J enf4-$d -e ~/logs/tracktail/enf4-$d.err -o ~/logs/tracktail/enf4-$d.out \
-#     -n 72 -q gpu_h100 -R "span[hosts=1]" -gpu "num=6" -W 96:00 \
-#     pixi run python train.py --config-path configs/archive/config_encoder_3d_finetuning_2d.toml \
-#     --devices -1 --strategy ddp_find_unused_parameters_true
-
-#bsub -J enf6-$d -e ~/logs/tracktail/enf6-$d.err -o ~/logs/tracktail/enf6-$d.out \
-#    -n 96 -q gpu_h100 -R "span[hosts=1]" -gpu "num=8" -W 96:00 \
-#    /bin/bash cluster/train_script.sh configs/archive/config_encoder_gridresid_finetune.toml
-
-# bsub -J enm2-$d -e ~/logs/tracktail/enm2-$d.err -o ~/logs/tracktail/enm2-$d.out \
-#     -n 96 -q gpu_h100 -R "span[hosts=1]" -gpu "num=8" -W 168:00 \
-#     /bin/bash cluster/train_script.sh configs/archive/config_ft_muonsf_8gpu_5.toml
-
-# bsub -J enm3-$d -e ~/logs/tracktail/enm3-$d.err -o ~/logs/tracktail/enm3-$d.out \
-#     -n 96 -q gpu_h100 -R "span[hosts=1]" -gpu "num=8" -W 168:00 \
-#     /bin/bash cluster/train_script.sh configs/archive/config_ft_muonsf_8gpu_5b.toml
-
 # Paper finetune (configs/paper/finetune.toml; paper run used 8x H100; needs PRETRAIN_CKPT = your pretrain checkpoint).
 bsub -J finetune-$d -e ~/logs/tracktail/finetune-$d.err -o ~/logs/tracktail/finetune-$d.out \
     -n 96 -q gpu_h100 -R "span[hosts=1]" -gpu "num=8" -W 168:00 \
