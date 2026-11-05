@@ -6,7 +6,11 @@
 calibrated cameras and a set of 3D query points. It returns each point's 3D trajectory and
 visibility over time.
 
-<!-- TODO: teaser figure (paper Fig. 1, 3D-POP) + link to paper / project page -->
+<!-- TODO: teaser figure (paper Fig. 1) + link to paper / project page -->
+
+To reproduce the paper, use the [`paper` branch](https://github.com/AI-HHMI/tracktail/tree/paper) (configs, drivers,
+baselines), [tracktail-paper](https://github.com/AI-HHMI/tracktail-paper) (tables and figures) and
+[tracktail-preprocessing](https://github.com/AI-HHMI/tracktail-preprocessing) (dataset converters).
 
 - Uses only RGB video and camera calibration. No depth sensor and no monocular depth model.
 - Works with any number of cameras (1–N) and different rigs, because coordinates are normalized
@@ -40,7 +44,11 @@ pixi shell              # or prefix commands with `pixi run`
 ```
 
 Library only, without the server: `pip install tracktail`. You need to install PyTorch yourself.
-<!-- TODO: GPU / VRAM requirements; CPU works but is slow -->
+
+**GPU.** Any recent NVIDIA GPU works. Peak memory on an A100, 96 frames at 256 px, 2–10 views
+(`benchmark_speed/`): about 2 GB for 10 query points, 3.5 GB for 100, and 20 GB for 1000 (up to
+34 GB reserved by PyTorch at 10 views). Memory grows with the number of points, so lower
+`max_kpts` (points per forward pass) on smaller GPUs. CPU works but is slow.
 
 ## Quick start: inference server
 
@@ -69,7 +77,7 @@ r = requests.post("http://localhost:8000/predict",
                   data={"metadata": json.dumps(meta)}, files=files)
 out = np.load(io.BytesIO(r.content))
 xyz = out["coords_pred"][0]                          # (T, N, 3)
-visible = 1 / (1 + np.exp(-out["vis_pred"][0, ..., 0])) > 0.5
+visible = 1 / (1 + np.exp(-out["vis_pred"][0, ..., 0])) > 0.1   # threshold used in the paper
 ```
 
 `server/example_client.py` is an end-to-end smoke test that reads a trial directory, sends one
@@ -84,7 +92,8 @@ window, and prints the output shapes.
 | `--device cuda:0`, `--host`, `--port` | Runtime |
 | `--scorer-wandb` / `--scorer-config --scorer-checkpoint` | Optional track-quality scorer; enables `/score` |
 
-Only one request uses the GPU at a time (enforced by an asyncio lock). <!-- TODO: throughput numbers -->
+Only one request uses the GPU at a time (enforced by an asyncio lock). Throughput on an A100 with
+4 views and 100 points is about 18 frames/s (`benchmark_speed/`).
 
 ## HTTP API reference
 
@@ -167,16 +176,19 @@ trial/
 ## Pretrained models
 | Repo | Trained on | Clip / res | Release |
 |---|---|---|---|
-| `ai-hhmi/tracktail-static-animal` (server default) | TODO | 24 frames / 256 px | `2026-10-12` |
-| `ai-hhmi/tracktail-static` | TODO | 24 frames / 256 px | `2026-10-12` |
+| `ai-hhmi/tracktail-static-animal` (server default) | `tracktail-static`, further finetuned on animal datasets | 24 frames / 256 px | `2026-10-12` |
+| `ai-hhmi/tracktail-static` | The paper model: pretrained and finetuned on Multi-view Kubric + Multi-view Point Odyssey (human, animal) | 24 frames / 256 px | `2026-10-12` |
 
-<!-- TODO: what "static" means (static cameras); animal vs general; expected accuracy -->
+"static" means static (calibrated, non-moving) cameras. Use `tracktail-static-animal` for animal
+recordings; use `tracktail-static` for general scenes and to compare with the paper's numbers.
+The paper's pretrained and ablation checkpoints are in `ai-hhmi/tracktail-paper-checkpoints`
+(one subfolder per model; see the `paper` branch).
 
 ## Conventions
 - **Extrinsics** are world→camera 4×4 matrices. **Units** can be anything, because the model
   normalizes by a per-camera scene scale `s_c = 1 / median σ_max(J_c)`.
-- **Logits:** `vis_*` and `conf_*` outputs are logits, so apply a sigmoid. A threshold of 0.5
-  is a reasonable default.
+- **Logits:** `vis_*` and `conf_*` outputs are logits, so apply a sigmoid. For visibility use a
+  threshold of 0.1 (`tracktail.model.eval_metrics.TRACKTAIL_VIS_THRESH`; used in the paper).
 - **Camera order:** in the server it's the order of `cameras`. In `metadata.yaml` cameras are
   sorted by name (numerically if every name is a number).
 - **Moving cameras:** `moving_cams: true` with (T,4,4) extrinsics. Python API only.
@@ -184,8 +196,14 @@ trial/
 ## Long videos
 The server processes one clip per request. For longer videos you have two options:
 - Use the Python API or `scripts/inference_video.py`, which handle windowing automatically.
-- Chunk on the client: send overlapping windows and use the last predicted frame as the next
-  window's `coords` (with `query_times=0`). <!-- TODO: client helper / recipe -->
+- Chunk on the client: send windows of `n_frames` (from `/info`) that overlap by a few frames
+  (`scripts/eval_testset_metrics.py` uses 8). For each next window, send the previous window's
+  prediction at the first overlapping frame as `coords` with `query_times=0`, and keep the new
+  window's predictions from that frame on. This is what the Python API does internally.
+
+```bash
+pixi run python scripts/inference_video.py --help     # windowed inference over a whole trial
+```
 
 ## Visualization & evaluation
 - `scripts/render_video.py --input-npz out.npz --output-dir viz/ [--crop --trails]`: draws
@@ -215,15 +233,18 @@ The server processes one clip per request. For longer videos you have two option
 - Data lives under `<prefix>/<dataset>/<split>/<session>/<trial>/`, with each trial in the same
   layout as above (`metadata.yaml`, `pose3d.npz`/`pose2d.npz`, `img/` or `vid/`).
 - Datasets: Multi-View Kubric, Multiview Point Odyssey (Human/Animal), Panoptic Studio, DexYCB,
-  plus 2D-only sets. <!-- TODO: full list + download/conversion scripts -->
+  plus 2D-only sets. Converters for the public datasets are in
+  [tracktail-preprocessing](https://github.com/AI-HHMI/tracktail-preprocessing).
 - Sampling (cameras, keypoints, crops, augmentation, dataset balancing) is set in
   `[dataset.train]` in the config.
 
 ### Configs
-- Pretrain: `configs/<TODO pretrain-v6>.toml`.
-- Finetune: `configs/config_tracktail_finetuning_v6.toml`.
+- Pretrain and finetune of `tracktail-static` (the paper model): `configs/paper/{pretrain,finetune}.toml`
+  on the [`paper` branch](https://github.com/AI-HHMI/tracktail/tree/paper), with run details in
+  `configs/paper/RUNS.md`.
+- Animal finetune of `tracktail-static-animal`: `configs/config_tracktail_finetuning_v6.toml`.
 - Scorer: `configs/config_scorer.toml`.
-<!-- TODO: move stale configs to configs/archive/; commit the pretrain-v6 config -->
+- Other configs in `configs/` are older development configs.
 
 Key sections: `[model]`, `[dataset.*]`, `[training]` (optimizer: AdamW, schedule-free, or
 Muon; losses; `checkpoint_path`/`finetune`), and `[wandb]`. Iteration counts are **totals
