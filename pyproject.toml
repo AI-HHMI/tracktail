@@ -71,6 +71,7 @@ polars = ">=1.44.2,<2"
 
 [tool.pixi.feature.dev.dependencies]
 python-build = "*"
+pytest = "*"
 twine = "*"
 matplotlib = "*"
 ipython = "*"
