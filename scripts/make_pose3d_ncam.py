@@ -32,7 +32,7 @@ import zlib
 
 import numpy as np
 
-DATASET_ROOT = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6'
+DATASET_ROOT = os.environ.get('TRACKTAIL_DATA')
 DATASET = 'dex_ycb'
 
 SEED = 0
@@ -80,7 +80,7 @@ def curate(trial_dir, trial_name, n_cams):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--dataset-root', default=DATASET_ROOT)
+    ap.add_argument('--dataset-root', default=DATASET_ROOT, required=DATASET_ROOT is None)
     ap.add_argument('--split', default='test')
     ap.add_argument('--n-cams', nargs='+', type=int, default=N_CAMS)
     ap.add_argument('--overwrite', action='store_true', help='replace existing files')

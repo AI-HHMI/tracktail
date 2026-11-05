@@ -25,7 +25,7 @@ import zlib
 
 import numpy as np
 
-DATASET_ROOT = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6'
+DATASET_ROOT = os.environ.get('TRACKTAIL_DATA')
 DATASETS = ['kubric-multiview', 'dex_ycb', 'cmupanoptic_3dgs']
 
 SEED = 0
@@ -53,7 +53,7 @@ def sample_trial(trial_dir, trial_name):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--dataset-root', default=DATASET_ROOT)
+    ap.add_argument('--dataset-root', default=DATASET_ROOT, required=DATASET_ROOT is None)
     ap.add_argument('--datasets', nargs='+', default=DATASETS)
     ap.add_argument('--split', default='test')
     ap.add_argument('--overwrite', action='store_true', help=f'replace an existing {OUT_NAME}')

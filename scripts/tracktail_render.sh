@@ -3,15 +3,15 @@
 #
 # Structure: <output-dir>/<dataset>/<trial>.npz
 #
-# Renders go to $RENDER_ROOT (default /home/ruppk2@hhmi.org/renders-v2) so the earlier renders are kept. Frames before a
+# Renders go to $RENDER_ROOT (default $TRACKTAIL_RESULTS/renders). Frames before a
 # track's query frame are hidden (render_video.py).
 #
 # Usage:
 #   bash tracktail_render.sh <output-dir> [dataset ...]
 #
 # Examples:
-#   bash tracktail_render.sh /groups/karashchuk/home/ruppk2/results/paper/posetail-outputs/main_finetune_vzkjqrys
-#   bash tracktail_render.sh /groups/karashchuk/home/ruppk2/results/paper/posetail-outputs/main_finetune_vzkjqrys dex_ycb
+#   bash scripts/tracktail_render.sh $TRACKTAIL_RESULTS/tracktail-outputs/main_finetune_vzkjqrys_canonical_cached_100
+#   bash scripts/tracktail_render.sh <output-dir> dex_ycb
 
 set -e
 
@@ -20,12 +20,12 @@ shift
 DATASETS=("${@:-*}")
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export PYTHONPATH="/home/ruppk2@hhmi.org/software/mvtracker:$REPO:$PYTHONPATH"
-
-if [[ -x "$REPO/.pixi/envs/default/bin/python" ]]; then PYTHON="$REPO/.pixi/envs/default/bin/python"; else PYTHON=/groups/karashchuk/home/ruppk2/miniforge3/envs/mvtracker/bin/python; fi
+source "$REPO/scripts/paper_common.sh"
+export PYTHONPATH="$REPO:${PYTHONPATH:-}"
+PYTHON=$PIXI_PYTHON
 SCRIPT="$REPO/scripts/render_video.py"
-RENDER_ROOT=${RENDER_ROOT:-/home/ruppk2@hhmi.org/renders-v2}
-RENDER_BASE=$RENDER_ROOT/posetail-renders/$(basename "$OUTPUT_DIR")
+RENDER_ROOT=${RENDER_ROOT:-$TRACKTAIL_RESULTS/renders}
+RENDER_BASE=$RENDER_ROOT/tracktail-renders/$(basename "$OUTPUT_DIR")
 
 shopt -s nullglob
 for dataset in "${DATASETS[@]}"; do

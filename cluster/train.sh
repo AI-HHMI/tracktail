@@ -3,8 +3,8 @@
 #BSUB -W 00:10 						# walltime in HH:MM or MMMM
 #BSUB -n 96 							# num CPU slots
 #BSUB -M 64000 						# memory limit in MB
-#BSUB -e ~/logs/posetail/%J.err 	# error file
-#BSUB -o ~/logs/posetail/%J.out 	# out file
+#BSUB -e ~/logs/tracktail/%J.err 	# error file
+#BSUB -o ~/logs/tracktail/%J.out 	# out file
 #BSUB -R "span[hosts=1]" 			# number of nodes spanned by gpus
 #BSUB -q gpu_h200_parallel   		# type of gpu
 #BSUB -gpu "num=8" 					# number of gpus

@@ -1,63 +1,43 @@
 #!/usr/bin/env bash
 #
 # Tracktail inference + metrics on MVTracker's cached tracks (pose3d_cached.npz, written by make_pose3d_cached.py),
-# on the canonical cameras of the MVTracker tables. Runs directly (no bsub), same style as tracktail_100.sh.
+# on the canonical cameras of the MVTracker tables (Tab. main_results Tracktail row; ablation tables). Runs locally.
 #   1. scripts/eval_testset_metrics.py        inference (query_first: each track at the frame given by the file) and the
-#                                             metrics (the paper protocol by default: per track, query frame and earlier
-#                                             frames not evaluated, static/dynamic mean on kubric / dex_ycb; add
-#                                             --legacy-metrics there for the previous pooled definition)
+#                                             paper-protocol metrics (per track, query frame and earlier frames not
+#                                             evaluated, static/dynamic mean on kubric / dex_ycb)
 #   2. scripts/merge_eval_summaries.py        one summary.json / metrics.md over all datasets
-# For every network in NETWORKS (default: the main fine-tuned network only).
+# For every network in NETWORKS (default: the paper model only). Models load from Hugging Face (scripts/paper_common.sh);
+# set TRACKTAIL_WANDB_BASE to load the original W&B run dirs instead.
 #
 # Usage:
-#   bash tracktail_cached.sh [DATASETS]        default: kubric-multiview dex_ycb cmupanoptic_3dgs
+#   bash scripts/tracktail_cached.sh [DATASETS]        default: kubric-multiview dex_ycb cmupanoptic_3dgs
 #
 # Examples:
-#   bash tracktail_cached.sh
-#   bash tracktail_cached.sh "dex_ycb cmupanoptic_3dgs"
-#   NETWORKS="main_pretrain_e25w9v86 ablation_latent_dim_256_lczwsdx3" bash tracktail_cached.sh
-#   NETWORKS="all" bash tracktail_cached.sh        every network listed in RUNS below
+#   bash scripts/tracktail_cached.sh
+#   bash scripts/tracktail_cached.sh "dex_ycb cmupanoptic_3dgs"
+#   NETWORKS="main_pretrain_e25w9v86 ablation_latent_dim_256_lczwsdx3" bash scripts/tracktail_cached.sh
+#   NETWORKS="all" bash scripts/tracktail_cached.sh        every paper network (main + pretrain + 8 ablations)
 #
-# Results: $OUT_BASE/<network>_canonical_cached/ (for the default network: main_finetune_vzkjqrys_canonical_cached).
-# QUERY_OCC=unknown: no GT visibility input at the query frame (default gt; predicted occlusion is still carried
-#   between windows).
-# Env overrides: NETWORKS (names from RUNS below, separated by spaces; "all" for every one), OUT_BASE, POSE_FILE (default
-# pose3d_cached.npz), DEVICE (default cuda:0).
+# Results: $TRACKTAIL_OUT_BASE/<network>_canonical_cached/
+#   (default $TRACKTAIL_RESULTS/posetail-outputs-vis0.1-occunknown/main_finetune_vzkjqrys_canonical_cached).
+# Paper protocol: QUERY_OCC=unknown (default; no GT visibility at the query frame), VIS_THRESH=0.1 (default).
+# Env overrides: NETWORKS, TRACKTAIL_OUT_BASE, POSE_FILE (default pose3d_cached.npz), DEVICE (default cuda:0),
+#   QUERY_OCC, VIS_THRESH.
 
 set -e
 
 DATASETS=${1:-"kubric-multiview dex_ycb cmupanoptic_3dgs"}
 POSE_FILE=${POSE_FILE:-pose3d_cached.npz}
+QUERY_OCC=${QUERY_OCC:-unknown}
+VIS_THRESH=${VIS_THRESH:-0.1}
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$REPO/scripts/paper_common.sh"
+PYTHON=$PIXI_PYTHON
 
-[[ -f ~/.setup_env_vars.sh ]] && source ~/.setup_env_vars.sh
-export PATH="$HOME/.pixi/bin:$PATH"
-export PYTHONPATH="/groups/karashchuk/home/karashchukl/builds/vjepa2:$PYTHONPATH"
-export LD_LIBRARY_PATH="$REPO/.pixi/envs/default/lib:$LD_LIBRARY_PATH"
-
-WANDB_BASE=/groups/karashchuk/home/ruppk2/results/posetail-pretraining-v6/wandb
-WANDB_BASE_TEST=/groups/karashchuk/home/karashchukl/results/posetail-pretraining-v3/wandb
-OUT_BASE=${OUT_BASE:-/groups/karashchuk/home/ruppk2/results/paper-final-v2/posetail-outputs}
-
-# network name (as in format_tables.ipynb) -> its wandb run folder. Pick the ones to run with NETWORKS
-declare -A RUNS=(
-    [main_finetune_vzkjqrys]="$WANDB_BASE/run-20260912_115732-vzkjqrys"
-    [main_pretrain_e25w9v86]="$WANDB_BASE/run-20260908_175758-e25w9v86"
-    [ablation_dataset_static_kub_only_f4wpvece]="$WANDB_BASE/run-20260908_175634-f4wpvece"
-    [ablation_latent_dim_256_lczwsdx3]="$WANDB_BASE/run-20260908_175759-lczwsdx3"
-    [ablation_latent_dim_1024_wk2i4o1u]="$WANDB_BASE/run-20260908_175754-wk2i4o1u"
-    [ablation_cam_self_attn_folhop3e]="$WANDB_BASE/run-20260908_175833-folhop3e"
-    [ablation_encoder_size_base_hv8nguwx]="$WANDB_BASE/run-20260908_175754-hv8nguwx"
-    [ablation_encoder_size_giant_ubk4lvez]="$WANDB_BASE/run-20260908_175759-ubk4lvez"
-    [ablation_encoder_size_gigantic_u1c34ou7]="$WANDB_BASE/run-20260908_175807-u1c34ou7"
-    # [test_pretrain_gucz6yit]="$WANDB_BASE_TEST/run-20260904_204357-gucz6yit"
-)
 NETWORKS=${NETWORKS:-main_finetune_vzkjqrys}
-if [[ "$NETWORKS" == "all" ]]; then NETWORKS="${!RUNS[*]}"; fi
-for NAME in $NETWORKS; do
-    if [[ -z "${RUNS[$NAME]}" ]]; then echo "unknown network '$NAME'; known: ${!RUNS[*]}"; exit 1; fi
-done
+if [[ "$NETWORKS" == "all" ]]; then NETWORKS="$PAPER_NETWORKS"; fi
+for NAME in $NETWORKS; do model_args "$NAME" >/dev/null || exit 1; done
 
 declare -A CANONICAL_CAMS=(
     [kubric-multiview]="view_0 view_1 view_2 view_3"
@@ -66,21 +46,21 @@ declare -A CANONICAL_CAMS=(
 )
 
 cd "$REPO"
-if [[ -x .pixi/envs/default/bin/python ]]; then PYTHON=.pixi/envs/default/bin/python; else PYTHON="pixi run python"; fi
-
 for NAME in $NETWORKS; do
-    OUT="$OUT_BASE/${NAME}_canonical_cached"
-    echo "starting tracktail eval on cached tracks ($POSE_FILE): $NAME, $DATASETS -> $OUT"
+    OUT="$TRACKTAIL_OUT_BASE/${NAME}_canonical_cached"
+    echo "starting tracktail eval on cached tracks ($POSE_FILE): $NAME [$(model_args "$NAME")], $DATASETS -> $OUT"
 
     for DATASET in $DATASETS; do
         $PYTHON scripts/eval_testset_metrics.py \
-            --wandb-folder "${RUNS[$NAME]}" \
+            $(model_args "$NAME") \
+            --root          "$TRACKTAIL_DATA" \
             --out           "$OUT" \
             --datasets      "$DATASET" \
             --view-seed     0 \
             --device        "${DEVICE:-cuda:0}" \
             --pose-file     "$POSE_FILE" \
-            ${QUERY_OCC:+--query-occlusion $QUERY_OCC} \
+            --query-occlusion "$QUERY_OCC" \
+            --vis-thresh    "$VIS_THRESH" \
             --cam-names     ${CANONICAL_CAMS[$DATASET]}
     done
 

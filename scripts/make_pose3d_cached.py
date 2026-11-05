@@ -31,8 +31,8 @@ import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-DATASET_ROOT = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6'
-NATIVE_ROOT = '/groups/karashchuk/karashchuklab/mvtracker-datasets'
+DATASET_ROOT = os.environ.get('TRACKTAIL_DATA')
+NATIVE_ROOT = os.environ.get('MVTRACKER_DATA')
 
 # the cameras of the MVTracker tables: names in metadata.yaml, and the cache file of that view set
 DATASETS = {
@@ -112,8 +112,8 @@ def check_trial(trial_path, pose_file, cams, expected):
 
 def main():
     ap = argparse.ArgumentParser(description = __doc__, formatter_class = argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--dataset-root', default = DATASET_ROOT, help = 'tracktail-format datasets (where pose3d_cached.npz is written)')
-    ap.add_argument('--native-root', default = NATIVE_ROOT, help = 'MVTracker datasets (where the cache files are)')
+    ap.add_argument('--dataset-root', default=DATASET_ROOT, required=DATASET_ROOT is None,  help = 'tracktail-format datasets (where pose3d_cached.npz is written)')
+    ap.add_argument('--native-root', default = NATIVE_ROOT, required = NATIVE_ROOT is None, help = 'MVTracker datasets (where the cache files are)')
     ap.add_argument('--datasets', nargs = '+', default = list(DATASETS))
     ap.add_argument('--split', default = 'test')
     ap.add_argument('--name', default = 'pose3d_cached.npz', help = 'file written in every trial folder')

@@ -3,7 +3,8 @@
 # Tracktail inference + metrics on 100 tracks per trial: a random subset of MVTracker's cached tracks
 # (pose3d_cached_100.npz, scripts/make_pose3d_cached_100.py). query_first: each track is queried at the frame the file
 # gives it; the metrics are the paper protocol (eval_testset_metrics.py; --legacy-metrics there for the previous pooled
-# definition). Runs directly (no bsub), same style as cotracker_100.sh / mvtracker_100.sh.
+# definition). Runs locally, same style as cotracker_100.sh / mvtracker_100.sh. Feeds the qualitative figure (renders).
+# QUERY_OCC (default unknown, the paper protocol), VIS_THRESH (default 0.1), NETWORK, DEVICE, TRACKTAIL_OUT_BASE.
 #
 # Usage:
 #   bash tracktail_100.sh [canonical|N_VIEWS] [DATASETS] [POSE_FILE]
@@ -26,14 +27,13 @@ else
     NCAMS_LABEL="${MODE}cams"
 fi
 
-source ~/.setup_env_vars.sh
-export PATH="$HOME/.pixi/bin:$PATH"
-export PYTHONPATH="/groups/karashchuk/home/karashchukl/builds/vjepa2:$PYTHONPATH"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export LD_LIBRARY_PATH="$REPO/.pixi/envs/default/lib:$LD_LIBRARY_PATH"
-
-WANDB_BASE=/groups/karashchuk/home/ruppk2/results/posetail-pretraining-v6/wandb
-OUT=/groups/karashchuk/home/ruppk2/results/paper-final-v2/posetail-outputs/main_finetune_vzkjqrys_${NCAMS_LABEL}_cached_100
+source "$REPO/scripts/paper_common.sh"
+NETWORK=${NETWORK:-main_finetune_vzkjqrys}
+MODEL_ARGS=$(model_args "$NETWORK")
+QUERY_OCC=${QUERY_OCC:-unknown}
+VIS_THRESH=${VIS_THRESH:-0.1}
+OUT=${OUT:-$TRACKTAIL_OUT_BASE/${NETWORK}_${NCAMS_LABEL}_cached_100}
 
 declare -A CANONICAL_CAMS=(
     [kubric-multiview]="view_0 view_1 view_2 view_3"
@@ -42,7 +42,7 @@ declare -A CANONICAL_CAMS=(
 )
 
 cd "$REPO"
-if [[ -x .pixi/envs/default/bin/python ]]; then PYTHON=.pixi/envs/default/bin/python; else PYTHON="pixi run python"; fi
+PYTHON=$PIXI_PYTHON
 
 echo "starting tracktail 100-point eval"
 
@@ -53,7 +53,8 @@ if [[ "$MODE" == "canonical" ]]; then
             CAM_ARG="--cam-names ${CANONICAL_CAMS[$DATASET]}"
         fi
         $PYTHON scripts/eval_testset_metrics.py \
-            --wandb-folder "$WANDB_BASE/run-20260912_115732-vzkjqrys" \
+            $MODEL_ARGS --root "$TRACKTAIL_DATA" \
+            --query-occlusion "$QUERY_OCC" --vis-thresh "$VIS_THRESH" --device "${DEVICE:-cuda:0}" \
             --out           "$OUT" \
             --datasets      "$DATASET" \
             --view-seed     0 \
@@ -62,7 +63,8 @@ if [[ "$MODE" == "canonical" ]]; then
     done
 else
     $PYTHON scripts/eval_testset_metrics.py \
-        --wandb-folder "$WANDB_BASE/run-20260912_115732-vzkjqrys" \
+        $MODEL_ARGS --root "$TRACKTAIL_DATA" \
+        --query-occlusion "$QUERY_OCC" --vis-thresh "$VIS_THRESH" --device "${DEVICE:-cuda:0}" \
         --out           "$OUT" \
         --datasets      $DATASETS \
         --n-views       "$MODE" \

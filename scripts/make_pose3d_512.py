@@ -2,7 +2,9 @@
 """Curates 512 tracks per trial of the Point Odyssey test sets, stratified by how fast the tracks move.
 
 pose3d_full.npz of a trial has every track (tens of thousands). This samples 512 of them into
-<trial>/pose3d_512.npz next to it, in the format of pose3d.npz (which is never touched).
+<trial>/pose3d.npz next to it (--out-name to write elsewhere). The released Point Odyssey test data already ships
+this selection as pose3d.npz (it was generated as pose3d_512.npz and renamed), which is the file
+tracktail_cached_po.sh and the baseline PO drivers read; rerunning this with --overwrite reproduces it.
 
 Tracks. Only tracks seen by the 4 cameras (VIEWS, positions in the camera list of metadata.yaml) are eligible: a
 track is visible in a frame when its coordinates are finite and it is visible in at least one of the 4 cameras,
@@ -18,7 +20,7 @@ Bands. Ranked by speed within each trial, so every trial gets the same mix:
 The top 5% is left out because it is dominated by tracking artefacts. The tracks of a band are drawn at random
 without replacement with a generator seeded by SEED and the trial name, so a rerun gives the same tracks.
 
-pose3d_512.npz holds
+pose3d.npz (the selection) holds
     pose (1, T, 512, 3), vis (1, T, 512, C)   the sampled tracks of pose3d_full.npz, sorted by source index
     keypoints (512,)                          the names of the sampled tracks in pose3d_full.npz
     band (512,)                               0 slow, 1 dynamic, 2 fast
@@ -26,7 +28,7 @@ pose3d_512.npz holds
     source_index (512,)                       index of the track in pose3d_full.npz
 
 Usage:
-    python scripts/make_pose3d_512.py                  # both datasets, all trials
+    python scripts/make_pose3d_512.py --dataset-root $TRACKTAIL_DATA     # both datasets, all trials
     python scripts/make_pose3d_512.py --dry-run
     python scripts/make_pose3d_512.py --datasets point-odyssey-human --overwrite
 """
@@ -36,14 +38,14 @@ import zlib
 
 import numpy as np
 
-DATASET_ROOT = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6'
+DATASET_ROOT = os.environ.get('TRACKTAIL_DATA')
 DATASETS = ['point-odyssey-human', 'po-animal-sub256-motion']
 
 SEED = 0
 VIEWS = [2, 4, 5, 7]                     # positions in the camera list of metadata.yaml (view2, view4, view5, view7)
 MIN_STEPS = 50                           # consecutive visible frame pairs a track needs
 BANDS = [('slow', 0.00, 0.25, 128), ('dynamic', 0.25, 0.75, 256), ('fast', 0.75, 0.95, 128)]
-OUT_NAME = 'pose3d_512.npz'
+OUT_NAME = 'pose3d.npz'
 CHUNK = 8000                             # tracks per chunk, to keep the memory of the distance computation low
 
 
@@ -97,7 +99,8 @@ def curate(trial_dir, trial_name):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--dataset-root', default=DATASET_ROOT)
+    ap.add_argument('--dataset-root', default=DATASET_ROOT, required=DATASET_ROOT is None, help='default $TRACKTAIL_DATA')
+    ap.add_argument('--out-name', default=OUT_NAME, help='output file name in each trial dir (default %(default)s)')
     ap.add_argument('--datasets', nargs='+', default=DATASETS)
     ap.add_argument('--split', default='test')
     ap.add_argument('--overwrite', action='store_true', help=f'replace an existing {OUT_NAME}')
@@ -111,9 +114,9 @@ def main():
             if not os.path.exists(os.path.join(trial_dir, 'pose3d_full.npz')):
                 print(f'[skip] {ds}/{session}: no pose3d_full.npz')
                 continue
-            out_path = os.path.join(trial_dir, OUT_NAME)
+            out_path = os.path.join(trial_dir, args.out_name)
             if os.path.exists(out_path) and not args.overwrite and not args.dry_run:
-                print(f'[skip] {ds}/{session}: {OUT_NAME} exists (--overwrite to redo)')
+                print(f'[skip] {ds}/{session}: {args.out_name} exists (--overwrite to redo)')
                 continue
             out, info = curate(trial_dir, f'{ds}/{session}')
             e = info['edges']

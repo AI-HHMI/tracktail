@@ -15,32 +15,31 @@ METHODS=${2:-"tracktail cotracker mvtracker-gt mvtracker-dust3r arrow"}
 BENCH_ARGS=${BENCH_ARGS:-}
 mkdir -p "$OUT_DIR"
 
-[[ -f ~/.setup_env_vars.sh ]] && source ~/.setup_env_vars.sh
+# Paths (TRACKTAIL_DATA, baseline repos/weights/interpreters): paper.env, see baselines/README.md
+source "$REPO/paper.env"
 nvidia-smi | tee "$OUT_DIR/nvidia-smi.txt"
 
-# everything on /groups so it is visible from the cluster nodes (the /home/<user>@hhmi.org dirs are workstation-local)
-BUILDS=/groups/karashchuk/home/karashchukl/builds     # co-tracker, mvtracker sources; arrow-venv; arrow-weights
 PIXI_PY="$REPO/.pixi/envs/default/bin/python"
-MVT_ENV="/groups/karashchuk/home/ruppk2/miniforge3/envs/mvtracker"
-MVT_PY="$MVT_ENV/bin/python"   # has roma for DUSt3R
-ARROW_PY="$BUILDS/arrow-venv/bin/python"     # python 3.13.9 copy + ../arrow/.venv site-packages
+MVT_PY="$MVTRACKER_PYTHON"     # MVTracker + DUSt3R env (has roma)
+MVT_ENV="$(dirname "$(dirname "$(command -v "$MVT_PY")")")"
+ARROW_PY="$ARROW_PYTHON"
 
 for METHOD in $METHODS; do
     echo "=== $METHOD ==="
     case $METHOD in
         tracktail)
-            env PYTHONPATH="/groups/karashchuk/home/karashchukl/builds/vjepa2:$REPO" \
+            env PYTHONPATH="$REPO" \
                 LD_LIBRARY_PATH="$REPO/.pixi/envs/default/lib:${LD_LIBRARY_PATH:-}" \
                 "$PIXI_PY" "$HERE/bench.py" --method $METHOD --out "$OUT_DIR/$METHOD.jsonl" $BENCH_ARGS ;;
         cotracker)
-            env PYTHONPATH="$BUILDS/co-tracker:$REPO" \
+            env PYTHONPATH="$COTRACKER_REPO:$REPO" \
                 LD_LIBRARY_PATH="$REPO/.pixi/envs/default/lib:${LD_LIBRARY_PATH:-}" \
                 "$PIXI_PY" "$HERE/bench.py" --method $METHOD --out "$OUT_DIR/$METHOD.jsonl" $BENCH_ARGS ;;
         mvtracker-gt|mvtracker-dust3r)
             # The env libicui18n needs CXXABI_1.3.15; nodes otherwise resolve the older system libstdc++.
             # This is the runtime-library setup from conda activation, applied directly to avoid libmamba
             # cache parse failures when both benchmark methods are launched at once.
-            env PYTHONPATH="$BUILDS/mvtracker:/groups/karashchuk/home/ruppk2/github/dust3r" \
+            env PYTHONPATH="$MVTRACKER_REPO:$DUST3R_REPO" \
                 LD_LIBRARY_PATH="$MVT_ENV/lib:${LD_LIBRARY_PATH:-}" \
                 "$MVT_PY" "$HERE/bench.py" --method $METHOD --out "$OUT_DIR/$METHOD.jsonl" $BENCH_ARGS ;;
         arrow)

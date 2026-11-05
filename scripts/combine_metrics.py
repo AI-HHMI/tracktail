@@ -2,8 +2,12 @@
 combine eval metric results across multiple experiments into a single file
 for downstream analysis
 
+For the BASELINE outputs: mvtracker_metrics.py / cotracker_metrics.py (also used for ARROW) write
+<prefix>/<dataset>/{all_metrics.csv,summary_metrics.csv}; this stacks them (column 'experiment' = dataset). Tracktail outputs
+(eval_testset_metrics.py: summary.json / metrics.md) are merged with scripts/merge_eval_summaries.py instead.
+
 example:
-    python combine_metrics.py --prefix /home/ruppk2@hhmi.org/dataset_predictions
+    python combine_metrics.py --prefix $TRACKTAIL_RESULTS/mvtracker-outputs/paper-canonical-cached-duster
 
 outputs (written to --prefix):
     combined_all_metrics.csv: contains per-trial averages for each experiment
