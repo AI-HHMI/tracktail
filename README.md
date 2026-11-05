@@ -205,6 +205,10 @@ pixi run python cotracker_triangulation_stats.py
 pixi run paper
 ```
 
+Runs that are missing from your results tree (typically the pretrain and ablation runs, whose models are not
+released) are taken from the committed copies in tracktail-paper `data/results`, with a warning. So the ablation
+table rows come from the committed results unless you retrain those models.
+
 | Paper item | Drivers here (below) | tracktail-paper |
 |---|---|---|
 | Tab. main_results, po_results, ablations ×3, cotracker_triangulation, TAPVid-3D | see below | `tables.py` → `tables/<label>.tex` |
