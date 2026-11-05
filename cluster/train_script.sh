@@ -11,7 +11,7 @@ export NCCL_SHM_DISABLE=0
 
 module load cuda/12.8
 
-# Paper configs read TRACKTAIL_DATA / TRACKTAIL_RESULTS / TRACKTAIL_CKPTS (paper.env).
+# Paper configs read TRACKTAIL_DATA / TRACKTAIL_RESULTS (paper.env) and PRETRAIN_CKPT (finetune).
 [ -f paper.env ] && . ./paper.env
 
 pixi run python train.py --config-path $1 \

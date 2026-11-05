@@ -6,8 +6,9 @@
 #                                             paper-protocol metrics (per track, query frame and earlier frames not
 #                                             evaluated, static/dynamic mean on kubric / dex_ycb)
 #   2. scripts/merge_eval_summaries.py        one summary.json / metrics.md over all datasets
-# For every network in NETWORKS (default: the paper model only). Models load from Hugging Face (scripts/paper_common.sh);
-# set TRACKTAIL_WANDB_BASE to load the original W&B run dirs instead.
+# For every network in NETWORKS (default: the paper model only). The paper model loads from Hugging Face; the pretrain
+# and ablation networks are not released and load from $TRACKTAIL_MODELS/<network> (your own training runs; see
+# scripts/paper_common.sh). TRACKTAIL_WANDB_BASE loads the original W&B run dirs instead.
 #
 # Usage:
 #   bash scripts/tracktail_cached.sh [DATASETS]        default: kubric-multiview dex_ycb cmupanoptic_3dgs

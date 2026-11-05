@@ -31,7 +31,7 @@ Usage:
     pixi run python scripts/eval_testset_metrics.py --datasets dex_ycb --out <preds_dir> [--force]
 
     # another model: a Hub checkpoint, a local packaged model.pth, or a training run
-    #   --hf-repo ai-hhmi/tracktail-paper-checkpoints --subfolder ablation-latent-256
+    #   --hf-repo REPO [--revision REV] [--subfolder DIR]
     #   --checkpoint model.pth            (or --checkpoint ckpt.pth --config config.toml)
     #   --wandb-folder <wandb_run_dir> [--checkpoint STEP]
 

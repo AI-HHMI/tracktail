@@ -39,7 +39,7 @@ d=$(date +d%dh%H)
 #     -n 96 -q gpu_h100 -R "span[hosts=1]" -gpu "num=8" -W 168:00 \
 #     /bin/bash cluster/train_script.sh configs/archive/config_ft_muonsf_8gpu_5b.toml
 
-# Paper finetune (configs/paper/finetune.toml; paper run used 8x H100; needs TRACKTAIL_CKPTS/pretrain/model.pth).
+# Paper finetune (configs/paper/finetune.toml; paper run used 8x H100; needs PRETRAIN_CKPT = your pretrain checkpoint).
 bsub -J finetune-$d -e ~/logs/tracktail/finetune-$d.err -o ~/logs/tracktail/finetune-$d.out \
     -n 96 -q gpu_h100 -R "span[hosts=1]" -gpu "num=8" -W 168:00 \
     /bin/bash cluster/train_script.sh configs/paper/finetune.toml

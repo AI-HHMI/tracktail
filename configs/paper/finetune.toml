@@ -3,7 +3,7 @@
 # (expanded by tracktail.model.train_utils.load_config; see configs/paper/RUNS.md):
 #   TRACKTAIL_DATA     dataset root (kubric-multiview/, point-odyssey-human/, po-animal-sub256-motion/, ...)
 #   TRACKTAIL_RESULTS  output root; W&B runs and checkpoints go to $TRACKTAIL_RESULTS/training
-#   TRACKTAIL_CKPTS    local copy of ai-hhmi/tracktail-paper-checkpoints (finetune init only)
+#   PRETRAIN_CKPT      your pretrain checkpoint (finetune.toml only)
 # Paper checkpoint: checkpoint_02314240.pth (8x H100).
 # Learning rate: train.py multiplies learning_rate by sqrt(world_size). The paper LR is
 #   9e-5 * sqrt(8) = 2.5e-4. With a different GPU count, set learning_rate = paper_lr / sqrt(n_gpus).
@@ -170,7 +170,7 @@ seed = 0
 
 finetune = true
 # paper run: wandb/run-20260908_175758-e25w9v86/files/checkpoints/checkpoint_00799996.pth
-checkpoint_path = '${TRACKTAIL_CKPTS}/pretrain/model.pth'
+checkpoint_path = '${PRETRAIN_CKPT}'   # e.g. <your pretrain run>/files/checkpoints/checkpoint_00799996.pth
 
 n_iterations = 8000000
 scheduler_type = 'muon'

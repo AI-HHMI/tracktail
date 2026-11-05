@@ -57,9 +57,10 @@ overrides in an untracked `paper.local.env` next to it):
 | `TRACKTAIL_DATA` | dataset root in the trial layout (below) | `./data` |
 | `MVTRACKER_DATA` | MVTracker's own benchmark datasets (for the MVTracker baseline and the cached-track files) | `./data/mvtracker` |
 | `TRACKTAIL_RESULTS` | all outputs: training runs, predictions, metrics, logs | `./results` |
-| `TRACKTAIL_CKPTS` | local copy of the paper checkpoints (only to start finetuning from the released pretrain) | `./checkpoints` |
+| `TRACKTAIL_MODELS` | your own trained models, `<network>/model.pth` or `<network>` -> W&B run dir | `$TRACKTAIL_RESULTS/models` |
+| `PRETRAIN_CKPT` | your pretrain checkpoint, read by `configs/paper/finetune.toml` | unset |
 | `BASELINE_ROOT` | baseline repos and weights (`baselines/setup.sh`) | `./external` |
-| `TRACKTAIL_WANDB_BASE` | optional: original W&B run dirs; if set, drivers load those instead of Hugging Face | unset |
+| `TRACKTAIL_WANDB_BASE` | optional: the original W&B run dirs; if set, drivers load those for every network | unset |
 
 Results trees (subfolder names as in the paper's results):
 `$TRACKTAIL_RESULTS/tracktail-outputs/`, `mvtracker-outputs/`, `mvtracker-outputs-dexycb-sensordepth/`,
@@ -136,25 +137,32 @@ pixi run python scripts/make_pose3d_ncam.py          # pose3d_ncam{1..8}_512.npz
 
 ## Models
 
-All checkpoints are packaged eval weights (`model.pth` with the model config embedded) on Hugging Face.
+Only the paper's final model is released: `ai-hhmi/tracktail-static` @ `2026-10-12` on Hugging Face (packaged eval
+weights of W&B run `vzkjqrys`, checkpoint 2314240; config `configs/paper/finetune.toml`). It covers Tab.
+main_results, po_results and TAPVid-3D, Figs. ncams, survival, qualitative and speed.
 
-| Paper row | Checkpoint (repo / subfolder @ revision) | Config | W&B run @ iteration |
-|---|---|---|---|
-| Tracktail (all main results) | `ai-hhmi/tracktail-static` @ `2026-10-12` (= `ai-hhmi/tracktail-paper-checkpoints` / `finetune`) | `configs/paper/finetune.toml` | `vzkjqrys` @ 2314240 |
-| Pretrained model (ablation reference) | `ai-hhmi/tracktail-paper-checkpoints` / `pretrain` @ `paper-v1` | `configs/paper/pretrain.toml` | `e25w9v86` @ 799996 |
-| No camera self-attention | … / `ablation-cam-attn-off` | `configs/paper/ablation_cam_attn_off.toml` | `folhop3e` @ 799996 |
-| No temporal self-attention | … / `ablation-temporal-attn-off` | `configs/paper/ablation_temporal_attn_off.toml` | `b3de55ap` @ 799996 |
-| Neither | … / `ablation-cam-temporal-attn-off` | `configs/paper/ablation_cam_temporal_attn_off.toml` | `cnmw9dcf` @ 799996 |
-| Encoder Base | … / `ablation-encoder-base` | `configs/paper/ablation_encoder_base.toml` | `hv8nguwx` @ 799996 |
-| Encoder Giant | … / `ablation-encoder-giant` | `configs/paper/ablation_encoder_giant.toml` | `ubk4lvez` @ 799996 |
-| Encoder Gigantic | … / `ablation-encoder-gigantic` | `configs/paper/ablation_encoder_gigantic.toml` | `u1c34ou7` @ 799996 |
-| Latent 256 | … / `ablation-latent-256` | `configs/paper/ablation_latent_256.toml` | `lczwsdx3` @ 799996 |
-| Latent 1024 | … / `ablation-latent-1024` | `configs/paper/ablation_latent_1024.toml` | `wk2i4o1u` @ 799996 |
+The pretrained model and the ablation models (Tabs. ablation_camattn, ablation_encoder, ablation_latent) are not
+released. Retrain them with their configs (below), or use the committed result summaries in tracktail-paper `data/`.
+
+| Paper row | Config | W&B run @ iteration |
+|---|---|---|
+| Tracktail (all main results) | `configs/paper/finetune.toml` | `vzkjqrys` @ 2314240 (released) |
+| Pretrained model (ablation reference) | `configs/paper/pretrain.toml` | `e25w9v86` @ 799996 |
+| No camera self-attention | `configs/paper/ablation_cam_attn_off.toml` | `folhop3e` @ 799996 |
+| No temporal self-attention | `configs/paper/ablation_temporal_attn_off.toml` | `b3de55ap` @ 799996 |
+| Neither | `configs/paper/ablation_cam_temporal_attn_off.toml` | `cnmw9dcf` @ 799996 |
+| Encoder Base | `configs/paper/ablation_encoder_base.toml` | `hv8nguwx` @ 799996 |
+| Encoder Giant | `configs/paper/ablation_encoder_giant.toml` | `ubk4lvez` @ 799996 |
+| Encoder Gigantic | `configs/paper/ablation_encoder_gigantic.toml` | `u1c34ou7` @ 799996 |
+| Latent 256 | `configs/paper/ablation_latent_256.toml` | `lczwsdx3` @ 799996 |
+| Latent 1024 | `configs/paper/ablation_latent_1024.toml` | `wk2i4o1u` @ 799996 |
 
 `scripts/eval_testset_metrics.py`, `scripts/tracktail_tapvid3d_official.py` and `benchmark_speed/bench.py` take
-`--hf-repo REPO --revision REV --subfolder DIR` (default: the paper model), `--checkpoint model.pth`, or
-`--wandb-folder RUN_DIR`. The shell drivers take a network name (`NETWORKS=...`, list in
-`scripts/paper_common.sh`) and map it to these arguments.
+`--hf-repo REPO --revision REV` (default: the paper model), `--checkpoint model.pth`, or `--wandb-folder RUN_DIR`.
+The shell drivers take a network name (`NETWORKS=...`, list in `scripts/paper_common.sh`): the paper model loads
+from Hugging Face, any other network from `$TRACKTAIL_MODELS/<network>/model.pth` (made with
+`scripts/package_checkpoint.py --run-dir <run> --output ...`) or from `$TRACKTAIL_MODELS/<network>` linked to its
+W&B run dir.
 
 Parameter count (`pixi run python scripts/count_params.py`): 350.5M = 307.8M scene encoder (V-JEPA 2.1 ViT-L
 304.7M + 2.1M projection) + 6.4M query encoder + 36.3M decoder.
@@ -164,7 +172,7 @@ Parameter count (`pixi run python scripts/count_params.py`): 350.5M = 307.8M sce
 Two stages; details, wall times and the loss-weight mapping in [`configs/paper/RUNS.md`](configs/paper/RUNS.md).
 
 1. Pretrain, `configs/paper/pretrain.toml`: 4× H100 80GB, 800k iterations (≈49 h), frozen V-JEPA 2.1 Large encoder.
-2. Finetune, `configs/paper/finetune.toml`: 8× H100 80GB, from the pretrain weights, encoder unfrozen, Kubric
+2. Finetune, `configs/paper/finetune.toml`: 8× H100 80GB, from your pretrain checkpoint, encoder unfrozen, Kubric
    upweighted 3×; the paper model is checkpoint 2314240 (the run was stopped there; `n_iterations` is larger).
 3. Ablations: `configs/paper/ablation_*.toml`, copies of the pretrain config with one model setting changed,
    evaluated at checkpoint 799996.
@@ -173,7 +181,7 @@ Two stages; details, wall times and the loss-weight mapping in [`configs/paper/R
 source paper.env
 pixi run python train.py --config-path configs/paper/pretrain.toml --devices -1 \
     --num-nodes 1 --precision 32 --strategy ddp_find_unused_parameters_true
-hf download ai-hhmi/tracktail-paper-checkpoints --revision paper-v1 --include 'pretrain/*' --local-dir "$TRACKTAIL_CKPTS"
+export PRETRAIN_CKPT=$TRACKTAIL_RESULTS/training/wandb/run-<date>-<id>/files/checkpoints/checkpoint_00799996.pth
 pixi run python train.py --config-path configs/paper/finetune.toml --devices -1 \
     --num-nodes 1 --precision 32 --strategy ddp_find_unused_parameters_true
 ```
@@ -233,11 +241,15 @@ bash arrow_baseline/arrow_cached_po.sh                             # 24-frame wi
 The MVTracker GT-depth rows need the PO GT depth maps (`preprocess_gt_depths_point_odyssey.py`), which need the
 raw Point Odyssey depth renders. <!-- TODO: say whether gt-depths ship with the data release -->
 
-**Ablation tables** (camera/temporal attention, encoder size, latent size; pretrain-stage models):
+**Ablation tables** (camera/temporal attention, encoder size, latent size; pretrain-stage models): these models are
+not released. Train them (`configs/paper/pretrain.toml`, `ablation_*.toml`), put them under `$TRACKTAIL_MODELS`
+(see [Models](#models)), then:
 
 ```bash
 NETWORKS=all bash scripts/tracktail_cached.sh                      # pretrain + 8 ablations (+ the paper model)
 ```
+
+Or skip the retraining and use the committed summaries in tracktail-paper `data/`.
 
 **Fig. ncams** (DexYCB, 1–8 views):
 

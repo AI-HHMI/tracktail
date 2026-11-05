@@ -13,18 +13,16 @@ import os
 
 PAPER_HF_REPO = 'ai-hhmi/tracktail-static'
 PAPER_HF_REVISION = '2026-10-12'
-PAPER_CHECKPOINTS_REPO = 'ai-hhmi/tracktail-paper-checkpoints'
 
 
 def add_model_args(parser, default_hf_repo=PAPER_HF_REPO, default_revision=PAPER_HF_REVISION):
     g = parser.add_argument_group('model (default: the paper model from the Hugging Face Hub)')
     g.add_argument('--hf-repo', default=None,
-                   help=f'Hugging Face model repo holding a packaged model.pth (default {default_hf_repo}; '
-                        f'pretrain/ablations: {PAPER_CHECKPOINTS_REPO} with --subfolder)')
+                   help=f'Hugging Face model repo holding a packaged model.pth (default {default_hf_repo})')
     g.add_argument('--revision', default=None,
                    help=f'Hub revision: tag, branch or commit (default {default_revision} for {default_hf_repo})')
     g.add_argument('--subfolder', default=None,
-                   help='folder inside the Hub repo, e.g. pretrain or ablation-latent-256')
+                   help='folder inside the Hub repo that holds model.pth (default: the repo root)')
     g.add_argument('--wandb-folder', default=None,
                    help='training run dir (files/config.toml + files/checkpoints/) instead of the Hub')
     g.add_argument('--checkpoint', default=None,

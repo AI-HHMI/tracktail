@@ -1,7 +1,7 @@
 # Shared setup for the paper drivers (sourced, not executed):
 #   source "$REPO/scripts/paper_common.sh"
 # Sources paper.env, picks the pixi Python, and maps paper network names to model arguments for
-# scripts/eval_testset_metrics.py (Hugging Face by default; TRACKTAIL_WANDB_BASE switches to W&B run dirs).
+# scripts/eval_testset_metrics.py (see model_args below).
 
 PAPER_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../paper.env
@@ -13,22 +13,11 @@ else
     PIXI_PYTHON="pixi run --manifest-path $PAPER_REPO/pyproject.toml python"
 fi
 
-# network name (= output folder prefix used by tracktail-paper) -> HF subfolder of $TRACKTAIL_PAPER_CKPTS_REPO,
-# and the W&B run dir of the original training run (fallback when TRACKTAIL_WANDB_BASE is set).
-# main_finetune_vzkjqrys is the paper model; it loads from $TRACKTAIL_HF_REPO@$TRACKTAIL_HF_REVISION
-# (identical to $TRACKTAIL_PAPER_CKPTS_REPO/finetune).
-declare -A PAPER_HF_SUBFOLDER=(
-    [main_finetune_vzkjqrys]=""
-    [main_pretrain_e25w9v86]="pretrain"
-    [ablation_cam_self_attn_folhop3e]="ablation-cam-attn-off"
-    [ablation_temporal_self_attn_b3de55ap]="ablation-temporal-attn-off"
-    [ablation_cam_temporal_self_attn_cnmw9dcf]="ablation-cam-temporal-attn-off"
-    [ablation_encoder_size_base_hv8nguwx]="ablation-encoder-base"
-    [ablation_encoder_size_giant_ubk4lvez]="ablation-encoder-giant"
-    [ablation_encoder_size_gigantic_u1c34ou7]="ablation-encoder-gigantic"
-    [ablation_latent_dim_256_lczwsdx3]="ablation-latent-256"
-    [ablation_latent_dim_1024_wk2i4o1u]="ablation-latent-1024"
-)
+# Paper network names (= output folder prefixes used by tracktail-paper) and the W&B run of each original training run.
+# Only main_finetune_vzkjqrys (the paper model) is released, as $TRACKTAIL_HF_REPO@$TRACKTAIL_HF_REVISION. The pretrain
+# and ablation models are not released: train them with configs/paper/*.toml and put each one at
+# $TRACKTAIL_MODELS/<network>/model.pth (scripts/package_checkpoint.py --run-dir <run> --output ...), or symlink
+# $TRACKTAIL_MODELS/<network> to its W&B run dir. TRACKTAIL_WANDB_BASE (the original run dirs) overrides both.
 declare -A PAPER_WANDB_RUN=(
     [main_finetune_vzkjqrys]="run-20260912_115732-vzkjqrys"
     [main_pretrain_e25w9v86]="run-20260908_175758-e25w9v86"
@@ -45,16 +34,22 @@ PAPER_NETWORKS="main_finetune_vzkjqrys main_pretrain_e25w9v86 ablation_cam_self_
 
 # model_args NAME -> prints the model arguments for eval_testset_metrics.py / tracktail_tapvid3d_official.py
 model_args() {
-    local name=$1
+    local name=$1 local_dir="$TRACKTAIL_MODELS/$1"
     if [[ -z "${PAPER_WANDB_RUN[$name]+x}" ]]; then
         echo "unknown network '$name'; known: $PAPER_NETWORKS" >&2; return 1
     fi
     if [[ -n "${TRACKTAIL_WANDB_BASE:-}" ]]; then
         echo "--wandb-folder $TRACKTAIL_WANDB_BASE/${PAPER_WANDB_RUN[$name]}"
-    elif [[ -z "${PAPER_HF_SUBFOLDER[$name]}" ]]; then
+    elif [[ -f "$local_dir/model.pth" ]]; then
+        echo "--checkpoint $local_dir/model.pth"
+    elif [[ -f "$local_dir/files/config.toml" ]]; then
+        echo "--wandb-folder $local_dir"
+    elif [[ "$name" == "main_finetune_vzkjqrys" ]]; then
         echo "--hf-repo $TRACKTAIL_HF_REPO --revision $TRACKTAIL_HF_REVISION"
     else
-        echo "--hf-repo $TRACKTAIL_PAPER_CKPTS_REPO --revision $TRACKTAIL_PAPER_CKPTS_REVISION --subfolder ${PAPER_HF_SUBFOLDER[$name]}"
+        echo "network '$name' is not released: train it (configs/paper/), then put it at $local_dir/model.pth" \
+             "(scripts/package_checkpoint.py) or symlink $local_dir to its W&B run dir" >&2
+        return 1
     fi
 }
 
