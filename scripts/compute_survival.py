@@ -1,11 +1,11 @@
-"""Compute per-frame survival rate curves and save to CSV.
+"""Compute per-frame survival rate curves on Multiview Point Odyssey and save them to CSV (paper: survival figures).
 
 For each (model, dataset) combination, loads all trial prediction files,
 computes survival rate at every frame, and writes the mean ± std across
 trials to survival_curves.csv.
 
 Survival rate at frame t = fraction of tracked points whose cumulative L2
-error has not yet exceeded `THRESHOLD` at any visible frame up to t.
+error has not yet exceeded the threshold at any visible frame up to t.
 Points are only counted from their query_time onward (pre-query frames are
 excluded). The GT must be finite at a frame for it to count as a failure.
 
@@ -13,8 +13,19 @@ A track that CoTracker could not triangulate in a frame has no prediction there 
 means for the survival: "skip" (default) ignores the frame, as the distance metrics (mte, ate) do; "fail" counts a
 frame that is visible in the ground truth but has no prediction as a failure.
 
+Inputs (the *_cached_po.sh runs, paper folder names; defaults from paper.env / scripts/paper_common.sh):
+    tracktail-<n>cams            $TRACKTAIL_OUT_BASE/main_finetune_vzkjqrys_po_<n>cams      (scripts/tracktail_cached_po.sh)
+    cotracker-<n>cams            $COTRACKER_OUT_BASE/paper-po-<n>cams                       (cotracker_cached_po.sh)
+    mvtracker-<n>cams-{gt,duster} $MVTRACKER_OUT_BASE/paper-po-<n>cams-{gt,duster}_0.5      (mvtracker_cached_po.sh)
+    arrow-<n>cams                $ARROW_OUT_BASE/paper-po-<n>cams                           (arrow_cached_po.sh)
+The MVTracker visibility threshold (_0.5) does not change the predicted positions, so the survival is the same for
+any threshold suffix. The paper figures use 4 cameras: po_survival_tracktail.pdf (tracktail-4cams, all thresholds)
+and po_survival_comparison_1.2.pdf (tracktail / cotracker / mvtracker-duster / arrow, 4 cams, threshold 1.2).
+
 Usage:
-    python compute_survival.py [--out survival_curves.csv] [--cams 4 9] [--nan-policy skip|fail]
+    source paper.env
+    python scripts/compute_survival.py [--out survival_curves.csv] [--cams 4 9] [--nan-policy skip|fail]
+        [--methods tracktail cotracker mvtracker arrow] [--results DIR] [--tracktail-root DIR] ...
 """
 
 import argparse
@@ -26,10 +37,10 @@ import pandas as pd
 import yaml
 
 
-THRESHOLD = 50.0  # world-unit L2 failure distance (matches eval_testset_metrics.py)
-
-RESULTS = "/groups/karashchuk/home/ruppk2/results/paper-final-v2"
-DATASET_ROOT = "/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6"
+RESULTS = os.environ.get("TRACKTAIL_RESULTS", "results")
+DATASET_ROOT = os.environ.get("TRACKTAIL_DATA", "data")
+TRACKTAIL_NETWORK = "main_finetune_vzkjqrys"   # the paper model
+METHODS = ("tracktail", "cotracker", "mvtracker", "arrow")
 
 DATASETS = {   # name in the output, dataset folder, trial folder prefix
     "human": ("point-odyssey-human", "hum"),
@@ -37,21 +48,41 @@ DATASETS = {   # name in the output, dataset folder, trial folder prefix
 }
 
 
-def make_configs(cams):
-    """The runs of cotracker_cached_po.sh, mvtracker_cached_po.sh and posetail_cached_po.sh with n cameras."""
+def default_roots(results=None):
+    """Results trees of the four methods: <results>/<method>-outputs when results is given, else the *_OUT_BASE env
+    vars of scripts/paper_common.sh, else $TRACKTAIL_RESULTS/<method>-outputs."""
+    roots = {}
+    for m in METHODS:
+        env = os.environ.get(f"{m.upper()}_OUT_BASE")
+        roots[m] = f"{results}/{m}-outputs" if results else (env or f"{RESULTS}/{m}-outputs")
+    return roots
+
+
+def make_configs(cams, roots=None, methods=METHODS, mvtracker_suffix="_0.5", dataset_root=None):
+    """The runs of tracktail_cached_po.sh, cotracker_cached_po.sh, mvtracker_cached_po.sh and arrow_cached_po.sh
+    with n cameras."""
+    roots = roots or default_roots()
+    dataset_root = dataset_root or DATASET_ROOT
     configs = []
     for n in cams:
         for dataset, (folder, prefix) in DATASETS.items():
-            configs.append(dict(
-                model=f"posetail-{n}cams", dataset=dataset,
-                pattern=f"{RESULTS}/posetail-outputs/main_finetune_vzkjqrys_po_{n}cams/{folder}/{prefix}*_trial.npz"))
-            configs.append(dict(
-                model=f"cotracker-{n}cams", dataset=dataset, cotracker=True,
-                pattern=f"{RESULTS}/cotracker-outputs/paper-po-{n}cams/{folder}/test/{prefix}*/trial/cotracker_3d.npz"))
-            for depth in ("gt", "duster"):
+            if "tracktail" in methods:
                 configs.append(dict(
-                    model=f"mvtracker-{n}cams-{depth}", dataset=dataset,
-                    pattern=f"{RESULTS}/mvtracker-outputs/paper-po-{n}cams-{depth}/{folder}/{prefix}*_trial.npz"))
+                    model=f"tracktail-{n}cams", dataset=dataset,
+                    pattern=f"{roots['tracktail']}/{TRACKTAIL_NETWORK}_po_{n}cams/{folder}/{prefix}*_trial.npz"))
+            if "cotracker" in methods:
+                configs.append(dict(
+                    model=f"cotracker-{n}cams", dataset=dataset, cotracker=True, dataset_root=dataset_root,
+                    pattern=f"{roots['cotracker']}/paper-po-{n}cams/{folder}/test/{prefix}*/trial/cotracker_3d.npz"))
+            if "mvtracker" in methods:
+                for depth in ("gt", "duster"):
+                    configs.append(dict(
+                        model=f"mvtracker-{n}cams-{depth}", dataset=dataset,
+                        pattern=f"{roots['mvtracker']}/paper-po-{n}cams-{depth}{mvtracker_suffix}/{folder}/{prefix}*_trial.npz"))
+            if "arrow" in methods:
+                configs.append(dict(
+                    model=f"arrow-{n}cams", dataset=dataset,
+                    pattern=f"{roots['arrow']}/paper-po-{n}cams/{folder}/{prefix}*_trial.npz"))
     return configs
 
 
@@ -63,14 +94,14 @@ def cam_indices(metadata_path, cam_names):
     return [names.index(n) for n in cam_names]
 
 
-def load_trial(path, cotracker=False, pose_file="pose3d.npz"):
+def load_trial(path, cotracker=False, pose_file="pose3d.npz", dataset_root=None):
     """Load (coords_pred, coords_true, vis_true, query_times) from a trial file.
 
     All formats store coords_pred (1,T,N,3), coords_true (1,T,N,3), vis_true (1,T,N,1) and query_times (absent in
     cotracker files of runs without --query-first: all points queried at frame 0).
     vis_true is visibility in any camera of the pose file. For a run with fewer cameras it has to be restricted to
-    the cameras that were used: posetail/mvtracker files store that as vis_true_cams (1,T,N,C_used); the cotracker
-    files do not, so it is rebuilt from the pose file of the trial for the cameras in cam_names.
+    the cameras that were used: tracktail/mvtracker/arrow files store that as vis_true_cams (1,T,N,C_used); the cotracker
+    files do not, so it is rebuilt from the pose file of the trial (under dataset_root) for the cameras in cam_names.
 
     Returns arrays of shape:
         coords_pred : (T, N, 3)
@@ -87,7 +118,7 @@ def load_trial(path, cotracker=False, pose_file="pose3d.npz"):
         vis_true = (np.isfinite(vtc) & (vtc > 0.5)).any(axis=-1)
     elif cotracker and "cam_names" in d.files:
         trial_dir = os.path.dirname(path)                                    # .../<dataset>/test/<session>/trial
-        pose_dir = os.path.join(DATASET_ROOT, *trial_dir.split(os.sep)[-4:])
+        pose_dir = os.path.join(dataset_root or DATASET_ROOT, *trial_dir.split(os.sep)[-4:])
         vis_all = np.load(os.path.join(pose_dir, pose_file))["vis"][0]       # (T_full, N_full, C)
         idx = cam_indices(os.path.join(pose_dir, "metadata.yaml"), [str(c) for c in d["cam_names"]])
         vis_true = vis_all[..., idx].any(-1)[d["frame_numbers"]][:, d["valid_mask"]]
@@ -145,7 +176,8 @@ def process_config(cfg, threshold, nan_policy="skip"):
     curves = []
     for path in paths:
         try:
-            cp, ct, vt, qt = load_trial(path, cotracker=cfg.get("cotracker", False))
+            cp, ct, vt, qt = load_trial(path, cotracker=cfg.get("cotracker", False),
+                                        dataset_root=cfg.get("dataset_root"))
             curve = survival_rate_per_frame(cp, ct, vt, qt, threshold, nan_policy)
             curves.append(curve)
         except Exception as e:
@@ -174,8 +206,20 @@ def process_config(cfg, threshold, nan_policy="skip"):
 
 
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", default="survival_curves.csv")
+    ap.add_argument("--results", default=None,
+                    help="Results root: the per-method roots below default to <results>/<method>-outputs (without "
+                         "--results: the *_OUT_BASE env vars, else $TRACKTAIL_RESULTS/<method>-outputs)")
+    ap.add_argument("--tracktail-root", default=None, help="default $TRACKTAIL_OUT_BASE")
+    ap.add_argument("--cotracker-root", default=None, help="default $COTRACKER_OUT_BASE")
+    ap.add_argument("--mvtracker-root", default=None, help="default $MVTRACKER_OUT_BASE")
+    ap.add_argument("--arrow-root", default=None, help="default $ARROW_OUT_BASE")
+    ap.add_argument("--mvtracker-suffix", default="_0.5",
+                    help="Suffix of the MVTracker folders (VIS_THRESHOLD of mvtracker_cached_po.sh; default _0.5)")
+    ap.add_argument("--dataset-root", default=None,
+                    help="Datasets (default $TRACKTAIL_DATA); the CoTracker files need the trials' pose3d.npz")
+    ap.add_argument("--methods", nargs="+", choices=METHODS, default=list(METHODS))
     ap.add_argument("--cams", type=int, nargs="+", default=[4, 9],
                     help="Number of cameras of the runs to process (the paper-po-<n>cams folders)")
     ap.add_argument("--nan-policy", choices=["skip", "fail"], default="skip",
@@ -189,7 +233,11 @@ def main():
 
     thresholds = [args.threshold] if args.threshold is not None else args.thresholds
 
-    configs = make_configs(args.cams)
+    roots = default_roots(args.results)
+    for m in METHODS:
+        if getattr(args, f"{m}_root"):
+            roots[m] = getattr(args, f"{m}_root")
+    configs = make_configs(args.cams, roots, args.methods, args.mvtracker_suffix, args.dataset_root)
     all_rows = []
     for thr in thresholds:
         print(f"\n=== Threshold {thr} ===")
