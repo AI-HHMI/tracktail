@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import math
 import time
@@ -90,13 +91,43 @@ def make_worker_init_fn(base_seed, rank):
     return _init
 
 
+_ENV_VAR_RE = re.compile(r'\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}')
+
+
+def expand_env_vars(value):
+    """Expand ``${VAR}`` and ``${VAR:-default}`` in every string of a (nested) config.
+
+    Lets committed configs (e.g. configs/paper/*.toml) refer to ``${TRACKTAIL_DATA}`` instead
+    of machine-specific paths. An unset variable without a default raises, so a run never
+    silently writes to or reads from a literal ``${...}`` path.
+    """
+    if isinstance(value, dict):
+        return {k: expand_env_vars(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [expand_env_vars(v) for v in value]
+    if isinstance(value, str) and '${' in value:
+        def _sub(m):
+            name, default = m.group(1), m.group(2)
+            if name in os.environ:
+                return os.environ[name]
+            if default is not None:
+                return default
+            raise KeyError(f'config value {value!r} needs environment variable {name} '
+                           f'(e.g. source paper.env)')
+        return _ENV_VAR_RE.sub(_sub, value)
+    return value
+
+
 def load_config(config_path, easy = True): 
     ''' 
     loads and returns the toml configuration file in which
-    keys can be accessed.like.this
+    keys can be accessed.like.this. ${VAR} / ${VAR:-default} in string values are
+    expanded from the environment (see expand_env_vars).
     '''
     with open(config_path, 'r') as toml_file:
         config = toml.load(toml_file)
+
+    config = expand_env_vars(config)
 
     if easy: 
         config = EasyDict(config)

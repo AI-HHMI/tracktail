@@ -10,21 +10,20 @@
 #BSUB -gpu "num=8" 					# number of gpus
 
 # define model params
-CONFIG_PATH=${1:-"configs/config_default_3d.toml"}
+CONFIG_PATH=${1:-"configs/paper/pretrain.toml"}
 NUM_NODES=${2:-1}
 PRECISION=${3:-"32"}
 STRATEGY=${4:-"ddp"}
 echo "using config $CONFIG_PATH"
 echo "pwd: $PWD"
 
-source ~/.setup_env_vars.sh
+[ -f ~/.setup_env_vars.sh ] && . ~/.setup_env_vars.sh
 
 # gpu specs
 nvidia-smi
 
 # pixi environment 
 export PATH="$HOME/.pixi/bin:$PATH"
-export PYTHONPATH="/groups/karashchuk/home/karashchukl/builds/vjepa2:$PYTHONPATH"
 pixi --version
 
 pixi install 
