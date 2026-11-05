@@ -46,7 +46,7 @@ pixi shell              # or prefix commands with `pixi run`
 Library only, without the server: `pip install tracktail`. You need to install PyTorch yourself.
 
 **GPU.** Any recent NVIDIA GPU works. Peak memory on an A100, 96 frames at 256 px, 2–10 views
-(`benchmark_speed/`): about 2 GB for 10 query points, 3.5 GB for 100, and 20 GB for 1000 (up to
+(paper speed benchmark, `benchmark_speed/` on the `paper` branch): about 2 GB for 10 query points, 3.5 GB for 100, and 20 GB for 1000 (up to
 34 GB reserved by PyTorch at 10 views). Memory grows with the number of points, so lower
 `max_kpts` (points per forward pass) on smaller GPUs. CPU works but is slow.
 
@@ -93,7 +93,7 @@ window, and prints the output shapes.
 | `--scorer-wandb` / `--scorer-config --scorer-checkpoint` | Optional track-quality scorer; enables `/score` |
 
 Only one request uses the GPU at a time (enforced by an asyncio lock). Throughput on an A100 with
-4 views and 100 points is about 18 frames/s (`benchmark_speed/`).
+4 views and 100 points is about 18 frames/s (paper speed benchmark).
 
 ## HTTP API reference
 
