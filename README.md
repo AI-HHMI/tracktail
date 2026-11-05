@@ -9,22 +9,21 @@ To reproduce the paper, see the [`paper` branch](https://github.com/AI-HHMI/trac
 - Uses only RGB video and camera calibration. No depth sensor and no monocular depth model.
 - Works with any number of cameras (1–N) and different rigs, because coordinates are normalized
   by a per-camera scene scale.
-- Ships with a pretrained checkpoint on the Hugging Face Hub and an HTTP inference server.
+- Pretrained models on the Hugging Face Hub, a Python API, and an [HTTP inference server](docs/SERVER.md).
 
 ---
 
 ## Contents
 1. [Installation](#installation)
-2. [Quick start: inference server](#quick-start-inference-server)
-3. [HTTP API reference](#http-api-reference)
-4. [Python API](#python-api)
-5. [Pretrained models](#pretrained-models)
-6. [Conventions: cameras, coordinates, outputs](#conventions)
-7. [Long videos](#long-videos)
-8. [Visualization & evaluation](#visualization--evaluation)
-9. [Training](#training)
-10. [Repository layout](#repository-layout)
-11. [Citation](#citation)
+2. [Python API](#python-api)
+3. [Pretrained models](#pretrained-models)
+4. [Conventions: cameras, coordinates, outputs](#conventions)
+5. [Long videos](#long-videos)
+6. [Visualization & evaluation](#visualization--evaluation)
+7. [Inference server](#inference-server)
+8. [Training](#training)
+9. [Repository layout](#repository-layout)
+10. [Citation](#citation)
 
 ---
 
@@ -43,98 +42,6 @@ Library only, without the server: `pip install tracktail`. You need to install P
 (paper speed benchmark, `benchmark_speed/` on the `paper` branch): about 2 GB for 10 query points, 3.5 GB for 100, and 20 GB for 1000 (up to
 34 GB reserved by PyTorch at 10 views). Memory grows with the number of points, so lower
 `max_kpts` (points per forward pass) on smaller GPUs. CPU works but is slow.
-
-## Quick start: inference server
-
-```bash
-pixi run python server/server.py               # downloads ai-hhmi/tracktail-static-animal, serves on :8000
-curl localhost:8000/info                       # n_frames, image_size, device, model source
-```
-
-Minimal Python client:
-
-```python
-import io, json, cv2, numpy as np, requests
-
-meta = {
-    "cameras": [  # one entry per camera, in the order the model should use them
-        {"name": "cam0", "mat": K0.tolist(), "dist": d0.tolist(),
-         "ext": E0.tolist(), "offset": [0, 0]},
-        ...
-    ],
-    "coords": queries_xyz.tolist(),        # (N, 3) world coordinates
-    "query_times": query_t.tolist(),       # (N,) frame index within this clip (optional, default 0)
-}
-files = [("images", (f"{cam}__{t:06d}.jpg", cv2.imencode(".jpg", frame)[1].tobytes()))
-         for cam, frames in clips.items() for t, frame in enumerate(frames)]
-r = requests.post("http://localhost:8000/predict",
-                  data={"metadata": json.dumps(meta)}, files=files)
-out = np.load(io.BytesIO(r.content))
-xyz = out["coords_pred"][0]                          # (T, N, 3)
-visible = 1 / (1 + np.exp(-out["vis_pred"][0, ..., 0])) > 0.1   # threshold used in the paper
-```
-
-`server/example_client.py` is an end-to-end smoke test that reads a trial directory, sends one
-window, and prints the output shapes.
-
-### Server options
-| Flag | Purpose |
-|---|---|
-| `--hf-repo REPO [--revision TAG]` | Load from the HF Hub (default `ai-hhmi/tracktail-static-animal`). Pin a dated release, e.g. `2026-10-12`. Set `HF_TOKEN` for private repos. |
-| `--wandb RUN_DIR [--checkpoint-number N]` | Load a local training run (`files/config.toml` + `files/checkpoints/`) |
-| `--config C.toml --checkpoint X.pth` | Explicit config and checkpoint paths |
-| `--device cuda:0`, `--host`, `--port` | Runtime |
-| `--scorer-wandb` / `--scorer-config --scorer-checkpoint` | Optional track-quality scorer; enables `/score` |
-
-Only one request uses the GPU at a time (enforced by an asyncio lock). Throughput on an A100 with
-4 views and 100 points is about 18 frames/s (paper speed benchmark).
-
-## HTTP API reference
-
-### `GET /info`
-Returns `n_frames`, `image_size`, `device`, `model_source`, `model_revision`, `config_path`,
-`checkpoint_path`, `mode_3d`, `scorer_loaded`, and the scorer paths.
-
-### `POST /predict`
-Runs one forward pass over one clip. The request is `multipart/form-data`:
-
-- **`metadata`** (JSON string)
-  - `cameras[]`:
-    - `name`
-    - `type` (`pinhole` | `fisheye`)
-    - `mat` (3×3 K)
-    - `dist` (`[k1,k2,p1,p2,k3]`)
-    - `ext` (4×4 world→camera)
-    - `offset` (`[ox, oy]` if the images are crops of the calibrated frame)
-  - `coords`: (N,3) world-space query points
-  - `query_times`: (N,) optional
-- **`images`**: one file per (camera, frame), named `<cam_name>__<frame_idx>.<ext>`.
-  - Any format OpenCV can decode.
-  - Every camera must send the same number of frames. The clip length must be even and at
-    least 2. Use `n_frames` from `/info` to match training.
-  - Frames are ordered by `frame_idx`, and `query_times` index into that order.
-- Images are resized server-side so the longer side equals `image_size`. They aren't cropped,
-  so crop around the subject yourself and pass `offset`.
-
-**Response:** an `.npz` file (`B=1`, `T` frames, `N` points, `C` cameras):
-
-| Key | Shape | Meaning |
-|---|---|---|
-| `coords_pred` | (B,T,N,3) | **Final 3D prediction** (confidence-fused across cameras) |
-| `vis_pred` | (B,T,N,1) | Visibility logit (visible in ≥1 camera) |
-| `conf_pred` | (B,T,N) | 3D confidence logit |
-| `2d_pred` | (C,B,T,N,2) | Per-camera 2D prediction, in uploaded-image pixels |
-| `vis_pred_2d`, `conf_pred_2d`, `conf_3d`, `depth_pred` | (C,B,T,N) | Per-camera visibility / 2D confidence / 3D confidence / depth |
-| `3d_pred_direct`, `3d_pred_rays`, `3d_pred_triangulate` | (B,T,N,3) | Alternative 3D estimates |
-| `3d_pred_cams_direct`, `3d_pred_cams_rays` | (C,B,T,N,3) | Per-camera 3D estimates |
-
-Validation errors return `400` with JSON `{"detail": "..."}`. Training-only outputs of grid-head models (`2d_logits`, `grid`) are never included in the response.
-
-### `POST /score` (optional)
-Takes a full trajectory `coords` (T,K,3) plus the same cameras and images. Returns `scores` and
-`precision` from the track-quality scorer: for each track, a quality score for the whole trajectory
-given the videos (the scorer reads the full trajectory and pools over frames and cameras) and the
-precision (confidence) of that score. Use it to rank or filter tracks.
 
 ## Python API
 
@@ -165,7 +72,7 @@ and a crop that follows the subject. Useful arguments:
 - `run_inference(..., n_views=K, seed=S)` uses K randomly chosen cameras.
 
 **Trial directory layout** (used by `run_inference`, `scripts/inference_video.py`, and
-`example_client.py`):
+`server/example_client.py`):
 ```
 trial/
   metadata.yaml   # intrinsic_matrices, extrinsic_matrices (world->cam), distortion_matrices,
@@ -188,17 +95,15 @@ recordings; use `tracktail-static` for general scenes and to compare with the pa
   normalizes by a per-camera scene scale `s_c = 1 / median σ_max(J_c)`.
 - **Logits:** `vis_*` and `conf_*` outputs are logits, so apply a sigmoid. For visibility use a
   threshold of 0.1 (`tracktail.model.eval_metrics.TRACKTAIL_VIS_THRESH`; used in the paper).
-- **Camera order:** in the server it's the order of `cameras`. In `metadata.yaml` cameras are
-  sorted by name (numerically if every name is a number).
-- **Moving cameras:** `moving_cams: true` with (T,4,4) extrinsics. Python API only.
+- **Camera order:** in `metadata.yaml` cameras are sorted by name (numerically if every name is a
+  number).
+- **Moving cameras:** `moving_cams: true` with (T,4,4) extrinsics (Python API only).
 
 ## Long videos
-The server processes one clip per request. For longer videos you have two options:
-- Use the Python API or `scripts/inference_video.py`, which handle windowing automatically.
-- Chunk on the client: send windows of `n_frames` (from `/info`) that overlap by a few frames
-  (`scripts/eval_testset_metrics.py` uses 8). For each next window, send the previous window's
-  prediction at the first overlapping frame as `coords` with `query_times=0`, and keep the new
-  window's predictions from that frame on. This is what the Python API does internally.
+The model sees 24 frames at a time. The Python API and `scripts/inference_video.py` track through
+longer videos automatically: they run overlapping windows, start each window from the previous
+window's predictions, and move the crop with the subject. With the server, you do the windowing on
+the client (see [docs/SERVER.md](docs/SERVER.md)).
 
 ```bash
 pixi run python scripts/inference_video.py --help     # windowed inference over a whole trial
@@ -211,61 +116,25 @@ pixi run python scripts/inference_video.py --help     # windowed inference over 
   so import it in a notebook.
 - `scripts/inference_metrics.py`: computes AJ, δ_avg, OA and MTE using
   `tracktail.model.eval_metrics`.
-- `cotracker_baseline/`: per-view CoTracker3 followed by triangulation, used as a paper
-  baseline. It needs the `cotracker` package installed separately.
+
+## Inference server
+
+`server/server.py` serves the model over HTTP, one clip per request, so you can call it from any
+language or another machine:
+
+```bash
+pixi run python server/server.py      # downloads ai-hhmi/tracktail-static-animal, serves on :8000
+```
+
+See [docs/SERVER.md](docs/SERVER.md) for the options, the request format, the outputs, and a
+Python client.
 
 ---
 
 ## Training
 
-### Method overview
-- **Video encoder:** V-JEPA 2.1 ViT-L/16 with hierarchical features, run on each view.
-- **Query encoder:** builds a per-camera embedding from the 2D projection, a 9×9 patch, the
-  times, the normalized depth, and an in-bounds flag.
-- **Decoder:** N layers, each with camera self-attention (using PRoPE ray encodings),
-  query→scene cross-attention, and an FFN.
-- **Heads:** 3D/2D position, depth, visibility, and 2D/3D confidence. Per-camera predictions are
-  fused by confidence.
-
-### Data
-- Data lives under `<prefix>/<dataset>/<split>/<session>/<trial>/`, with each trial in the same
-  layout as above (`metadata.yaml`, `pose3d.npz`/`pose2d.npz`, `img/` or `vid/`).
-- Datasets: Multi-View Kubric, Multiview Point Odyssey (Human/Animal), Panoptic Studio, DexYCB,
-  plus 2D-only sets. How to get the paper's datasets is described on the
-  [`paper` branch](https://github.com/AI-HHMI/tracktail/tree/paper).
-- Sampling (cameras, keypoints, crops, augmentation, dataset balancing) is set in
-  `[dataset.train]` in the config.
-
-### Configs
-- Training configs of `tracktail-static` (the paper model): `configs/paper/`
-  on the [`paper` branch](https://github.com/AI-HHMI/tracktail/tree/paper), with run details in
-  `configs/paper/RUNS.md`.
-- Animal finetune of `tracktail-static-animal`: `configs/config_tracktail_finetuning_v6.toml`.
-- Scorer: `configs/config_scorer.toml`.
-- `configs/archive/`: older development configs.
-
-Key sections: `[model]`, `[dataset.*]`, `[training]` (optimizer: AdamW, schedule-free, or
-Muon; losses; `checkpoint_path`/`finetune`), and `[wandb]`. Iteration counts are **totals
-across all GPUs**.
-
-### Launching
-Config values like `${TRACKTAIL_DATA}` are read from the environment when the config is loaded.
-
-```bash
-export TRACKTAIL_DATA=/path/to/datasets TRACKTAIL_RESULTS=/path/to/results INIT_CKPT=/path/to/checkpoint.pth
-pixi run python train.py --config-path configs/config_tracktail_finetuning_v6.toml \
-    --devices -1 --strategy ddp_find_unused_parameters_true      # Lightning Fabric DDP
-# LSF cluster: cluster/big_bsub_{pretraining,finetuning}.sh -> cluster/train_script.sh
-```
-- **Outputs:** `<wandb.path>/wandb/run-*/files/{config.toml, checkpoints/checkpoint_XXXXXXXX.pth}`.
-- **Resuming:** set `training.checkpoint_path` and `finetune = false`. To warm-start from
-  another stage, use `finetune = true`.
-- **Scorer:** `train_scorer.py`.
-
-### Releasing a checkpoint
-`scripts/package_checkpoint.py` strips a run down to the eval weights plus the model config,
-producing `model.pth`. Upload it with `hf upload ai-hhmi/<repo> model.pth` and tag a dated
-revision (`hf repo tag create ai-hhmi/<repo> <date>`).
+See [docs/TRAINING.md](docs/TRAINING.md). The configs behind the paper's model are on the
+[`paper` branch](https://github.com/AI-HHMI/tracktail/tree/paper).
 
 ---
 
@@ -274,11 +143,11 @@ revision (`hf repo tag create ai-hhmi/<repo> <date>`).
 tracktail/model/      model (tracker_encoder.py, encoder_decoder.py, vjepa2.py, cube.py), losses, metrics, train_utils
 tracktail/datasets/   training (tracktail_dataset.py) and inference datasets, scorer corruptions
 tracktail/inference/  inference_utils.py (loading, windowed tracking, trial I/O)
-server/              FastAPI inference server + example client
+server/              FastAPI inference server + example client (docs/SERVER.md)
+docs/                server and training docs
 scripts/             inference / rendering / metrics / packaging CLIs
 configs/             training configs (TOML)
 cluster/             LSF launch scripts
-cotracker_baseline/  CoTracker3 + triangulation baseline
 ```
 
 ## Citation

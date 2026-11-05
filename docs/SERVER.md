@@ -1,7 +1,41 @@
-# TrackerEncoder Inference Server
+# Tracktail inference server
 
-A FastAPI server that loads a single TrackerEncoder checkpoint and serves single-window predictions over HTTP.
-Optionally, it also loads a ScorerEncoder (track-quality scorer) and serves it at `/score`.
+A FastAPI server (`server/server.py`) that loads one Tracktail model and returns predictions for one
+clip (window) per HTTP request. Optionally, it also loads a track-quality scorer and serves it at
+`/score`.
+
+Only one request uses the GPU at a time (enforced by an asyncio lock). Throughput on an A100 with
+4 views and 100 query points is about 18 frames/s.
+
+## Quick start
+
+```bash
+pixi run python server/server.py      # downloads ai-hhmi/tracktail-static-animal, serves on :8000
+curl localhost:8000/info              # n_frames, image_size, device, model source
+```
+
+Minimal Python client:
+
+```python
+import io, json, cv2, numpy as np, requests
+
+meta = {
+    "cameras": [  # one entry per camera, in the order the model should use them
+        {"name": "cam0", "mat": K0.tolist(), "dist": d0.tolist(),
+         "ext": E0.tolist(), "offset": [0, 0]},
+        ...
+    ],
+    "coords": queries_xyz.tolist(),        # (N, 3) world coordinates
+    "query_times": query_t.tolist(),       # (N,) frame index within this clip (optional, default 0)
+}
+files = [("images", (f"{cam}__{t:06d}.jpg", cv2.imencode(".jpg", frame)[1].tobytes()))
+         for cam, frames in clips.items() for t, frame in enumerate(frames)]
+r = requests.post("http://localhost:8000/predict",
+                  data={"metadata": json.dumps(meta)}, files=files)
+out = np.load(io.BytesIO(r.content))
+xyz = out["coords_pred"][0]                                       # (T, N, 3)
+visible = 1 / (1 + np.exp(-out["vis_pred"][0, ..., 0])) > 0.1     # threshold used in the paper
+```
 
 ## Starting the server
 
@@ -9,30 +43,30 @@ With no model-source arguments, the server loads the latest revision of
 `ai-hhmi/tracktail-static-animal` from the Hugging Face Hub:
 
 ```bash
-python server/server.py
+pixi run python server/server.py
 ```
 
 Other model sources are supported:
 
 ```bash
 # A different Hugging Face model or a dated release
-python server/server.py --hf-repo ai-hhmi/tracktail-static --revision 2026-10-12
+pixi run python server/server.py --hf-repo ai-hhmi/tracktail-static --revision 2026-10-12
 
 # From a wandb run directory (same as --base-folder in inference_video.py)
-python server/server.py --wandb /path/to/wandb/run-YYYYMMDD_HHMMSS-XXXXXXXX
+pixi run python server/server.py --wandb /path/to/wandb/run-YYYYMMDD_HHMMSS-XXXXXXXX
 
 # With a specific checkpoint number (default: latest)
-python server/server.py --wandb /path/to/wandb/run-... --checkpoint-number 10000
+pixi run python server/server.py --wandb /path/to/wandb/run-... --checkpoint-number 10000
 
 # From explicit config and checkpoint paths
-python server/server.py --config /path/to/config.toml --checkpoint /path/to/checkpoint_00010000.pth
+pixi run python server/server.py --config /path/to/config.toml --checkpoint /path/to/checkpoint_00010000.pth
 
 # Override device, host, or port (defaults: device from config / cpu, host 0.0.0.0, port 8000)
-python server/server.py --hf-repo ai-hhmi/tracktail-static-animal --device cuda:1 --port 8080
+pixi run python server/server.py --hf-repo ai-hhmi/tracktail-static-animal --device cuda:1 --port 8080
 
 # Also load a track-quality scorer (enables POST /score)
-python server/server.py --scorer-wandb /path/to/scorer/wandb/run-... [--scorer-checkpoint-number N]
-python server/server.py --scorer-config scorer_config.toml --scorer-checkpoint scorer.pth
+pixi run python server/server.py --scorer-wandb /path/to/scorer/wandb/run-... [--scorer-checkpoint-number N]
+pixi run python server/server.py --scorer-config scorer_config.toml --scorer-checkpoint scorer.pth
 ```
 
 `--hf-repo`, `--wandb`, and `--config` are mutually exclusive.
@@ -137,9 +171,10 @@ Runs one forward pass and returns all model outputs.
 
   `example_client.py` does this (`crop_camera_group_to_queries`).
 - One request is one window. To track through long videos, the client has to handle it:
-  1. Split the video into consecutive windows.
-  2. After each window, take the last frame of `coords_pred`.
-  3. Send those positions as the next window's `coords`, with `query_times` set to 0.
+  1. Split the video into windows of `n_frames` that overlap by a few frames (the paper uses 8).
+  2. For each next window, take the previous window's `coords_pred` at the first overlapping frame.
+  3. Send those positions as the next window's `coords`, with `query_times` set to 0, and keep the
+     new window's predictions from that frame on.
 
   The offline pipeline (`run_tracker_encoder_on_videos` in
   `tracktail/inference/inference_utils.py`, used by `scripts/inference_video.py`) does this
@@ -173,7 +208,8 @@ Output keys (shapes use `B=1`, `T=n_frames`, `N=num_query_points`, `C=num_camera
 
 - `2d_pred` is returned in the pixel coordinates of the images you uploaded. It is un-scaled
   from the server's resize, but the crop offset is not removed.
-- Logit outputs (`vis_*`, `conf_*`) need a sigmoid to become probabilities.
+- Logit outputs (`vis_*`, `conf_*`) need a sigmoid to become probabilities. For visibility, a
+  threshold of 0.1 on the probability is what the paper uses.
 - Grid/classification checkpoints (`output_mode = grid | gridresid | gridnorm`, including the
   default `ai-hhmi/tracktail-static-animal`) also produce training-only outputs (`2d_logits`,
   `grid`). These are never included in the response, so every key loads with plain `np.load`
@@ -202,16 +238,18 @@ except:
 - `query_times` is ignored.
 
 **Response** `200 application/octet-stream` — `.npz` (`scores.npz`) with keys `scores` and
-`precision`, as returned by `ScorerEncoder.forward`.
+`precision`, as returned by `ScorerEncoder.forward`: for each track, a quality score for the whole
+trajectory given the videos, and the precision (confidence) of that score. Use it to rank or filter
+tracks.
 
 ---
 
 ## Example client
 
-`server/example_client.py` is a runnable end-to-end smoke test. It reads a trial directory (same layout as `inference_video.py`), sends one window of frames to the server, and prints shapes and NaN counts for each output key.
+`server/example_client.py` is a runnable end-to-end smoke test. It reads a trial directory (same layout as `scripts/inference_video.py`), sends one window of frames to the server, and prints shapes and NaN counts for each output key.
 
 ```bash
-python server/example_client.py \
+pixi run python server/example_client.py \
     --trial-path /path/to/session/trial/ \
     --server-url http://localhost:8000 \
     --start-frame 0
