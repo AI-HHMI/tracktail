@@ -1,5 +1,5 @@
 # Track-quality scorer (triplet loss). Backbone frozen; query-encoder + decoder +
-# pooling/score heads warm-started from posetail-finetuning-v3 run 39yczenk.
+# pooling/score heads warm-started from a tracker checkpoint (internal run 39yczenk).
 #
 # Two kinds of parameters live in this file:
 #   * SCORER       -- knobs specific to the scoring task; tune these.
@@ -9,14 +9,14 @@
 # Each section/line is tagged below.
 
 [wandb]                       # infra
-project_name = "posetail-scorer-2"
-path = "/groups/karashchuk/home/karashchukl/results/posetail-scorer-2"
+project_name = "tracktail-scorer"
+path = "${TRACKTAIL_RESULTS}/scorer"
 mode = "online"
 
 [dataset]                     # infra / data location
 batch_size = 1
 num_workers = 12
-prefix = "/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-finetuning-v3"
+prefix = "${TRACKTAIL_DATA}"
 # datasets_to_exclude = [ "johnson-fly", "cmupanoptic", "rat7m", "rat-city", "branson-fly",]
 datasets_to_exclude = []
 
@@ -121,7 +121,7 @@ sinusoid = 10.0
 # ======================================================================================
 [training]
 seed = 100
-checkpoint_path = "/groups/karashchuk/home/karashchukl/results/posetail-finetuning-v3/wandb/run-20260628_134003-39yczenk/files/checkpoints/checkpoint_01024000.pth"  # SCORER: tracker to warm-start from
+checkpoint_path = "${SCORER_INIT_CKPT}"  # SCORER: tracker to warm-start from
 n_iterations = 8000000
 scheduler_type = "muon"      # TRACKER ENC: reuse the run's SF-Muon setup
 max_grad_norm = 20.0

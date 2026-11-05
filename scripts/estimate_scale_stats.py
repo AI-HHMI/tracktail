@@ -39,7 +39,7 @@ against the current fixed ``scale_3d = 500``.
 Usage
 -----
     pixi run python scripts/estimate_scale_stats.py \
-        --root /groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-finetuning-v2 \
+        --root $TRACKTAIL_DATA \
         --split train --max-clips 4
 """
 import argparse
@@ -285,8 +285,7 @@ def _pct(xs, q):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", default="/groups/karashchuk/karashchuklab/"
-                    "animal-datasets-processed/posetail-finetuning-v2")
+    ap.add_argument("--root", default=os.environ.get("TRACKTAIL_DATA"), required=os.environ.get("TRACKTAIL_DATA") is None)
     ap.add_argument("--split", default="train")
     ap.add_argument("--datasets", nargs="*", default=None,
                     help="default: autodetect subdirs of --root")

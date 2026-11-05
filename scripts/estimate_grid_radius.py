@@ -26,7 +26,7 @@ the window (causal tracking). Image-free, bounded file-walk (reuses
 Usage
 -----
     pixi run python scripts/estimate_grid_radius.py \
-        --root /groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-finetuning-v3 \
+        --root $TRACKTAIL_DATA \
         --split val --max-clips 8
 """
 import argparse
@@ -169,8 +169,7 @@ def depth_report(logd, log_min, log_max, nbins=GRID):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", default="/groups/karashchuk/karashchuklab/"
-                    "animal-datasets-processed/posetail-finetuning-v3")
+    ap.add_argument("--root", default=os.environ.get("TRACKTAIL_DATA"), required=os.environ.get("TRACKTAIL_DATA") is None)
     ap.add_argument("--split", default="val")
     ap.add_argument("--datasets", nargs="*", default=None)
     ap.add_argument("--max-clips", type=int, default=8)
