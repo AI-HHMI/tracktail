@@ -27,9 +27,16 @@ Usage:
     pixi run python scripts/eval_testset_metrics.py \\
         --datasets dex_ycb kubric-multiview cmupanoptic_3dgs --out <preds_dir>
 
-    # compute missing predictions from a wandb run (latest checkpoint by default):
-    pixi run python scripts/eval_testset_metrics.py --datasets dex_ycb \\
-        --out <preds_dir> --wandb-folder <wandb_run_dir> [--checkpoint STEP] [--force]
+    # compute missing predictions with the paper model (ai-hhmi/tracktail-static@2026-10-12):
+    pixi run python scripts/eval_testset_metrics.py --datasets dex_ycb --out <preds_dir> [--force]
+
+    # another model: a Hub checkpoint, a local packaged model.pth, or a training run
+    #   --hf-repo ai-hhmi/tracktail-paper-checkpoints --subfolder ablation-latent-256
+    #   --checkpoint model.pth            (or --checkpoint ckpt.pth --config config.toml)
+    #   --wandb-folder <wandb_run_dir> [--checkpoint STEP]
+
+Paper protocol: --query-occlusion unknown (default here), --vis-thresh 0.1 (default).
+--root defaults to $TRACKTAIL_DATA.
 """
 import argparse
 import glob
@@ -46,7 +53,9 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tracktail.inference.inference_utils import (                         # noqa: E402
-    load_model_from_base_folder, run_inference, load_camera_group_from_metadata)
+    run_inference, load_camera_group_from_metadata)
+from tracktail.inference.model_args import (                           # noqa: E402
+    add_model_args, load_model_from_args, describe_model_source)
 from tracktail.model.eval_metrics_paper import (                       # noqa: E402
     PAPER_MOVEMENT_THRESHOLDS,
     get_eval_metrics_paper,
@@ -68,8 +77,7 @@ from tracktail.model.eval_metrics import (                             # noqa: E
     TRACKTAIL_VIS_THRESH,
 )
 
-DEFAULT_WANDB = '/groups/karashchuk/home/karashchukl/results/posetail-finetuning-v3/wandb/run-20260628_134003-39yczenk'
-DEFAULT_ROOT = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6'
+DEFAULT_ROOT = os.environ.get('TRACKTAIL_DATA')
 
 # TAP-Vid default thresholds (δavg over {1,2,4,8,16}) used for any dataset not listed below.
 DEFAULT_SETTINGS = dict(thresholds=[1, 2, 4, 8, 16], survival=50, n_views=None, max_kpts=2500)
@@ -404,13 +412,10 @@ def main():
                          f'survival={DEFAULT_SETTINGS["survival"]})')
     ap.add_argument('--out', required=True,
                     help='predictions/output folder: <out>/<dataset>/<trial>.npz (reused if present)')
-    ap.add_argument('--root', default=DEFAULT_ROOT,
-                    help='dataset root: expects <root>/<dataset>/test/.../trial/pose3d.npz')
-    ap.add_argument('--wandb-folder', default=DEFAULT_WANDB,
-                    help='wandb run dir (files/config.toml + files/checkpoints/); only loaded '
-                         'when a trial needs inference')
-    ap.add_argument('--checkpoint', type=int, default=None,
-                    help='checkpoint step; default = latest checkpoint in the wandb folder')
+    ap.add_argument('--root', default=DEFAULT_ROOT, required=DEFAULT_ROOT is None,
+                    help='dataset root: expects <root>/<dataset>/test/.../trial/pose3d.npz '
+                         '(default $TRACKTAIL_DATA)')
+    add_model_args(ap)   # only loaded when a trial needs inference
     ap.add_argument('--force', action='store_true', help='recompute even if predictions exist')
     ap.add_argument('--n-frames', type=int, default=500, help='cap; uses all available frames')
     ap.add_argument('--max-kpts', type=int, default=None, help='override per-dataset max_kpts')
@@ -435,7 +440,7 @@ def main():
     ap.add_argument('--vis-thresh', type=float, default=TRACKTAIL_VIS_THRESH,
                     help='visibility threshold (sigmoid of the vis logit) for the occlusion state carried between '
                          f'windows in inference and for AJ / occlusion accuracy (default {TRACKTAIL_VIS_THRESH})')
-    ap.add_argument('--query-occlusion', choices=['gt', 'unknown'], default='gt',
+    ap.add_argument('--query-occlusion', choices=['gt', 'unknown'], default='unknown',
                     help="per-camera occlusion input at each point's query frame: 'gt' = ground-truth visibility, "
                          "'unknown' = none given (-1). The predicted occlusion is carried between windows either way")
     ap.add_argument('--device', default='cuda:0')
@@ -448,10 +453,8 @@ def main():
     def get_model():
         if not model_state:
             device = torch.device(args.device)
-            print(f'Loading model from {args.wandb_folder} '
-                  f'(checkpoint={"latest" if args.checkpoint is None else args.checkpoint}) ...')
-            model, _cfg, cfg_path, ckpt = load_model_from_base_folder(
-                args.wandb_folder, checkpoint=args.checkpoint, device=device)
+            print(f'Loading model from {describe_model_source(args)} ...')
+            model, cfg_path, ckpt = load_model_from_args(args, device)
             print(f'Model loaded: {ckpt}')
             model_state.update(model=model, config_path=cfg_path, checkpoint_path=ckpt, device=device)
         return model_state

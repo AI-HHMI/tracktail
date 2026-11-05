@@ -17,8 +17,11 @@ Predictions already in <out>/<dataset>/ are reused. Only static-camera metadata 
 and ARROW also reports (github.com/ifradlin/arrow/issues/3).
 
 Usage:
-    pixi run python scripts/tracktail_tapvid3d_official.py --wandb-folder <run dir> --out <dir> \\
+    pixi run python scripts/tracktail_tapvid3d_official.py --out <dir> [model args: default paper model] \\
         [--datasets tapvid3d_pstudio ...] [--trials-json arrow_baseline/tapvid3d_minival.json | --all-trials]
+
+Paper protocol: --query-occlusion unknown (default), --vis-thresh 0.1 (default), mini-val trials; --root defaults to
+$TRACKTAIL_DATA. --gt-poses (not used in the paper) needs --raw-tapvid3d and --adt-poses.
 """
 import argparse
 import json
@@ -38,9 +41,10 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 from tracktail.model.eval_metrics import TRACKTAIL_VIS_THRESH       # noqa: E402
 from tracktail.inference.inference_utils import (                 # noqa: E402
-    load_model_from_base_folder, load_camera_group_from_metadata, run_tracker_encoder_on_videos)
+    load_camera_group_from_metadata, run_tracker_encoder_on_videos)
+from tracktail.inference.model_args import add_model_args, load_model_from_args, describe_model_source  # noqa: E402
 
-DEFAULT_ROOT = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6'
+DEFAULT_ROOT = os.environ.get('TRACKTAIL_DATA')
 DEFAULT_TRIALS = os.path.join(REPO, 'arrow_baseline', 'tapvid3d_minival.json')
 DATASETS = ['tapvid3d_pstudio', 'tapvid3d_drivetrack', 'tapvid3d_adt']
 
@@ -55,15 +59,11 @@ def reversed_frames_dir(img_dir, n_frames, tmp_root):
     return d
 
 
-RAW_TAPVID3D = '/groups/karashchuk/karashchuklab/animal-datasets/objects/tapvid3d'
-ADT_POSES = '/groups/karashchuk/home/karashchukl/results/paper-final-v2/tapvid3d_adt_minival_camera_poses'
-
-
-def cam_to_first(ds, tid, T, adt_poses):
+def cam_to_first(ds, tid, T, adt_poses, raw_tapvid3d):
     """(T, 4, 4) transforms camera t -> camera 0 from the ground-truth poses: DriveTrack's official extrinsics_w2c,
     ADT's poses recovered from the raw sequences (adt_poses/<tid>.npz c2w)."""
     if ds == 'tapvid3d_drivetrack':
-        z = np.load(os.path.join(RAW_TAPVID3D, 'drivetrack', f'{tid}.npz'), allow_pickle=True)
+        z = np.load(os.path.join(raw_tapvid3d, 'drivetrack', f'{tid}.npz'), allow_pickle=True)
         c2w = np.linalg.inv(z['extrinsics_w2c'].astype(np.float64))
     elif ds == 'tapvid3d_adt':
         c2w = np.load(os.path.join(adt_poses, f'{tid}.npz'))['c2w'].astype(np.float64)
@@ -136,7 +136,7 @@ def process_trial(model, trial_path, npz_path, args, device, tmp_root):
     q_in = q3d
     if args.gt_poses:
         # calibrated moving camera: world = the first camera; queries and predictions in that frame
-        to0 = cam_to_first(args.current_ds, args.current_tid, T, args.adt_poses)        # camera t -> camera 0
+        to0 = cam_to_first(args.current_ds, args.current_tid, T, args.adt_poses, args.raw_tapvid3d)        # camera t -> camera 0
         w2c = np.linalg.inv(to0)                                                        # camera 0 -> camera t
         cg_f = moving_camera_group(meta, w2c, tmp_root)
         cg_b = moving_camera_group(meta, w2c[::-1], tmp_root)
@@ -174,10 +174,9 @@ def process_trial(model, trial_path, npz_path, args, device, tmp_root):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--wandb-folder', required=True)
-    ap.add_argument('--checkpoint', type=int, default=None)
+    add_model_args(ap)
     ap.add_argument('--out', required=True)
-    ap.add_argument('--root', default=DEFAULT_ROOT)
+    ap.add_argument('--root', default=DEFAULT_ROOT, required=DEFAULT_ROOT is None, help='default $TRACKTAIL_DATA')
     ap.add_argument('--datasets', nargs='+', default=DATASETS)
     ap.add_argument('--trials-json', default=DEFAULT_TRIALS, help='{dataset: [<seq>_<id>, ...]} (default: mini-val)')
     ap.add_argument('--all-trials', action='store_true', help='every trial of <root>/<dataset>/test instead')
@@ -186,11 +185,14 @@ def main():
     ap.add_argument('--gt-poses', action='store_true',
                     help='give tracktail the ground-truth per-frame camera poses (moving calibrated camera, world = the '
                          'first camera; DriveTrack and ADT only); predictions are saved in camera coordinates as usual')
-    ap.add_argument('--adt-poses', default=ADT_POSES, help='ADT camera poses recovered from the raw sequences')
+    ap.add_argument('--adt-poses', default=None, help='--gt-poses: ADT camera poses recovered from the raw sequences '
+                                                       '(<dir>/<tid>.npz with c2w)')
+    ap.add_argument('--raw-tapvid3d', default=os.environ.get('TAPVID3D_RAW'),
+                    help='--gt-poses: raw TAPVid-3D download (drivetrack/<tid>.npz); default $TAPVID3D_RAW')
     ap.add_argument('--vis-thresh', type=float, default=TRACKTAIL_VIS_THRESH,
                     help='visibility threshold of the predicted occlusion carried between windows (occlusion embedding); '
                          'score with the same --vis-thresh in tapvid3d_official_metrics.py')
-    ap.add_argument('--query-occlusion', choices=['gt', 'unknown'], default='gt',
+    ap.add_argument('--query-occlusion', choices=['gt', 'unknown'], default='unknown',
                     help="occlusion input at the query frame: 'gt' = visible (benchmark queries), 'unknown' = none given")
     ap.add_argument('--n-overlap', type=int, default=8)
     ap.add_argument('--max-kpts', type=int, default=2500, help='keypoint chunk size (as eval_testset_metrics.py)')
@@ -223,8 +225,8 @@ def main():
                 if os.path.exists(npz) and not args.force:
                     continue
                 if model is None:
-                    model = load_model_from_base_folder(args.wandb_folder, checkpoint=args.checkpoint,
-                                                        device=device)[0]
+                    print(f'Loading model from {describe_model_source(args)} ...')
+                    model = load_model_from_args(args, device)[0]
                 t0 = time.time()
                 args.current_ds, args.current_tid = ds, tid
                 try:

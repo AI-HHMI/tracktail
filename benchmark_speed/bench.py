@@ -52,19 +52,20 @@ from PIL import Image
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 
-DEFAULT_TRIAL = ("/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6/"
-                 "point-odyssey-human/test/hum0/trial")
+_DATA = os.environ.get("TRACKTAIL_DATA")
+DEFAULT_TRIAL = os.path.join(_DATA, "point-odyssey-human/test/hum0/trial") if _DATA else None
 # Camera slots in order: 2 views = first 2; the canonical PO views (2,4,5,7) are the first 4.
 # Point Odyssey has only 9 cameras. The requested 10-view condition appends a duplicate of view2 in slot 10;
 # it tests 10 model input slots, not 10 independent camera viewpoints.
 VIEW_ORDER = ["view2", "view5", "view4", "view7", "view0", "view8", "view1", "view3", "view6", "view2"]
 
-TRACKTAIL_RUN = "/groups/karashchuk/home/ruppk2/results/posetail-pretraining-v6/wandb/run-20260912_115732-vzkjqrys"
-BUILDS = "/groups/karashchuk/home/karashchukl/builds"   # shared copies (the /home/<user>@hhmi.org dirs are workstation-local)
-COTRACKER_CKPT = "/groups/karashchuk/home/ruppk2/software/cotracker-weights/scaled_offline.pth"
-MVTRACKER_REPO = f"{BUILDS}/mvtracker"
-MVTRACKER_CKPT = "/groups/karashchuk/karashchuklab/mvtracker-datasets/checkpoints/mvtracker_200000_june2025.pth"
-DUST3R_CKPT = "/groups/karashchuk/karashchuklab/mvtracker-datasets/checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth"
+# Baseline code + weights: paper.env / baselines/setup.sh (BASELINE_ROOT layout).
+_BASELINE_ROOT = os.environ.get("BASELINE_ROOT", str(REPO / "external"))
+COTRACKER_CKPT = os.environ.get("COTRACKER_CKPT", f"{_BASELINE_ROOT}/weights/scaled_offline.pth")
+MVTRACKER_REPO = os.environ.get("MVTRACKER_REPO", f"{_BASELINE_ROOT}/mvtracker")
+MVTRACKER_CKPT = os.environ.get("MVTRACKER_CKPT", f"{_BASELINE_ROOT}/weights/mvtracker_200000_june2025.pth")
+DUST3R_CKPT = os.environ.get("DUST3R_CKPT", f"{_BASELINE_ROOT}/weights/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth")
+ARROW_CKPT = os.environ.get("ARROW_CKPT", f"{_BASELINE_ROOT}/weights/arrow")
 
 TARGET_RES = 256   # resize-and-pad resolution of the CoTracker / MVTracker pipelines (matches tracktail)
 
@@ -159,8 +160,9 @@ class Tracktail:
     def __init__(self, args, device):
         sys.path.insert(0, str(REPO))
         from tracktail.inference import inference_utils as iu
+        from tracktail.inference.model_args import load_model_from_args
         self.iu = iu
-        self.model, *_ = iu.load_model_from_base_folder(args.tracktail_run, device=device)
+        self.model, *_ = load_model_from_args(args, device)
         self.model.eval()
         self.device = device
         self.cg_all = iu.load_camera_group_from_metadata(os.path.join(args.trial, "metadata.yaml"), device="cpu")
@@ -511,17 +513,20 @@ def main():
     p.add_argument("--n-frames", type=int, default=96, help="clip length (frames of every view)")
     p.add_argument("--warmup", type=int, default=1, help="untimed runs per configuration")
     p.add_argument("--repeats", type=int, default=3, help="timed runs per configuration")
-    p.add_argument("--trial", default=DEFAULT_TRIAL)
+    p.add_argument("--trial", default=DEFAULT_TRIAL, required=DEFAULT_TRIAL is None,
+                   help="Point Odyssey test trial (default $TRACKTAIL_DATA/point-odyssey-human/test/hum0/trial)")
     p.add_argument("--device", default="cuda:0")
     p.add_argument("--out", required=True, help="jsonl file (appended)")
-    p.add_argument("--tracktail-run", default=TRACKTAIL_RUN)
     p.add_argument("--tracktail-overlap", type=int, default=8)
+    sys.path.insert(0, str(REPO))
+    from tracktail.inference.model_args import add_model_args
+    add_model_args(p)   # Tracktail model: default ai-hhmi/tracktail-static@2026-10-12 (the paper run vzkjqrys@2314240)
     p.add_argument("--cotracker-ckpt", default=COTRACKER_CKPT)
     p.add_argument("--mvtracker-ckpt", default=MVTRACKER_CKPT)
     p.add_argument("--dust3r-ckpt", default=DUST3R_CKPT)
     p.add_argument("--dust3r-warmup", type=int, default=2, help="untimed DUSt3R frames per view count")
     p.add_argument("--dust3r-frames", type=int, default=None, help="timed DUSt3R frames per view count (default all)")
-    p.add_argument("--arrow-ckpt", default=f"{BUILDS}/arrow-weights", help="ifradlin/arrow snapshot (or hub id)")
+    p.add_argument("--arrow-ckpt", default=ARROW_CKPT, help="ifradlin/arrow snapshot (or hub id); default $ARROW_CKPT")
     p.add_argument("--arrow-window", type=int, default=24)
     p.add_argument("--arrow-max-anchors", type=int, default=24)
     p.add_argument("--arrow-max-side", type=int, default=504)

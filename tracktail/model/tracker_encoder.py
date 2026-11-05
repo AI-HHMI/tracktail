@@ -69,6 +69,21 @@ class TrackerEncoder(nn.Module):
             revision=revision,
             cache_dir=cache_dir,
         )
+        model = cls.from_packaged_checkpoint(checkpoint_path, device=device, label=repo_id)
+        model._pretrained_repo_id = repo_id
+        model._pretrained_revision = revision
+        model._pretrained_subfolder = subfolder
+        return model
+
+    @classmethod
+    def from_packaged_checkpoint(cls, checkpoint_path, device=None, label=None):
+        """Load a local packaged checkpoint (``model.pth`` written by
+        scripts/package_checkpoint.py: ``model_state`` + ``model_config``)."""
+        if device is None:
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            device = torch.device(device)
+        label = label or checkpoint_path
         checkpoint = torch.load(
             checkpoint_path,
             map_location=device,
@@ -77,14 +92,14 @@ class TrackerEncoder(nn.Module):
 
         if not isinstance(checkpoint, dict):
             raise ValueError(
-                f'Packaged checkpoint from {repo_id!r} must be a dictionary, '
+                f'Packaged checkpoint from {label!r} must be a dictionary, '
                 f'got {type(checkpoint).__name__}'
             )
 
         model_config = checkpoint.get('model_config')
         if not isinstance(model_config, dict):
             raise ValueError(
-                f'Packaged checkpoint from {repo_id!r} has no dictionary model_config'
+                f'Packaged checkpoint from {label!r} has no dictionary model_config'
             )
 
         state_dict = checkpoint.get('model_state')
@@ -94,7 +109,7 @@ class TrackerEncoder(nn.Module):
             state_dict = checkpoint.get('model_state_eval')
         if not isinstance(state_dict, dict):
             raise ValueError(
-                f'Packaged checkpoint from {repo_id!r} has no model_state dictionary'
+                f'Packaged checkpoint from {label!r} has no model_state dictionary'
             )
 
         # The packaged model_state below is loaded strict=True and covers every encoder tensor,
@@ -103,9 +118,8 @@ class TrackerEncoder(nn.Module):
         model = cls(**{**model_config, 'video_encoder_pretrained': False}).to(device)
         model.load_state_dict(state_dict, strict=True)
         model._pretrained_model_config = model_config
-        model._pretrained_repo_id = repo_id
-        model._pretrained_revision = revision
-        model._pretrained_subfolder = subfolder
+        model._pretrained_source = {k: checkpoint.get(k) for k in
+                                    ('source_run', 'source_checkpoint', 'iteration') if k in checkpoint}
         model.eval()
         return model
 
