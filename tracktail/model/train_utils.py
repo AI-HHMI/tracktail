@@ -20,7 +20,8 @@ from easydict import EasyDict
 # from tracktail.datasets.datasets import Rat7mIterableDataset
 from tracktail.datasets.utils import safe_make
 from tracktail.model.cube import get_camera_scale
-from tracktail.model.eval_metrics import get_eval_metrics, get_metrics_by_motion, get_direct_depth_metrics
+from tracktail.model.eval_metrics import (get_eval_metrics, get_metrics_by_motion, get_direct_depth_metrics,
+                                         TRACKTAIL_VIS_THRESH)
 from tracktail.model.cube import get_camera_scale
 from tracktail.model.losses import get_vis_true, unroll_batch, normalize_by_mean_depth
 from tracktail.model.tracker import Tracker
@@ -891,6 +892,7 @@ def train_iteration(config, model, fabric, batch,
             coords_pred = coords_pred,
             coords_true = coords,
             prefix = prefix,
+            vis_thresh = TRACKTAIL_VIS_THRESH,
             cube_scale = _eval_cube_scale(cgroup, query_coords),
         )
         metric_dicts.append(metrics_dict)
@@ -1034,6 +1036,7 @@ def train_epoch(config, model, fabric, dataloader,
                 coords_pred = coords_pred,
                 coords_true = coords,
                 prefix = prefix,
+                vis_thresh = TRACKTAIL_VIS_THRESH,
                 cube_scale = _eval_cube_scale(cgroup, query_coords),
             )
             metric_dicts.append(metrics_dict)
@@ -1208,6 +1211,7 @@ def test_epoch(config, model, dataloader, loss = None,
                 coords_pred = coords_pred,
                 coords_true = coords,
                 prefix = prefix,
+                vis_thresh = TRACKTAIL_VIS_THRESH,
                 cube_scale = cube_scale,
             )
             # Fast-motion breakdown: error by cube_scale-normalized displacement-from-query,

@@ -65,6 +65,7 @@ from tracktail.model.eval_metrics import (                             # noqa: E
     get_l1_world_coord,
     get_delta_x_avg_pertraj,
     get_occlusion_accuracy_pertraj,
+    TRACKTAIL_VIS_THRESH,
 )
 
 DEFAULT_ROOT = os.environ.get('TRACKTAIL_DATA')
@@ -142,7 +143,7 @@ def load_trial_camera_ext(trial_path):
     return _to_np(cam['ext'])      # (4,4) static or (T,4,4) moving
 
 
-def eval_outputs_cam(out, trial_path, ds=None):
+def eval_outputs_cam(out, trial_path, ds=None, vis_thresh=TRACKTAIL_VIS_THRESH):
     """Compute depth-relative cam-coord (and optionally world-coord) metrics for a tapvid3d trial.
 
     Returns a dict of _cam / _world-suffixed keys to merge into the per-trial result.
@@ -176,7 +177,7 @@ def eval_outputs_cam(out, trial_path, ds=None):
         'survival_rate_cam': float(get_survival_rate_depth_relative(
             cp, ct, vis_eff, depths_b, TAPVID3D_SURVIVAL_DEPTH)),
         'avg_jaccard_cam':   float(get_average_jaccard_depth_relative(
-            cp, ct, vp, vis_eff, TAPVID3D_THRESHOLDS, depths_b)[0]),
+            cp, ct, vp, vis_eff, TAPVID3D_THRESHOLDS, depths_b, vis_thresh=vis_thresh)[0]),
     }
     for th, v in dx_dict_c.items():
         m[f'delta_x_{th}_cam'] = float(v)
@@ -190,7 +191,7 @@ def eval_outputs_cam(out, trial_path, ds=None):
             'survival_rate_world': float(get_survival_rate_world_coord(
                 cp, ct, vis_eff, depths_b, TAPVID3D_SURVIVAL_DEPTH)),
             'avg_jaccard_world':   float(get_average_jaccard_world_coord(
-                cp, ct, vp, vis_eff, TAPVID3D_THRESHOLDS, depths_b)[0]),
+                cp, ct, vp, vis_eff, TAPVID3D_THRESHOLDS, depths_b, vis_thresh=vis_thresh)[0]),
             'l1_world':            float(get_l1_world_coord(cp, ct, vis_eff, depths_b)),
         })
         for th, v in dx_dict_w.items():
@@ -199,7 +200,7 @@ def eval_outputs_cam(out, trial_path, ds=None):
     return m
 
 
-def eval_outputs_pertraj(out, thresholds, avg_jaccard_val):
+def eval_outputs_pertraj(out, thresholds, avg_jaccard_val, vis_thresh=TRACKTAIL_VIS_THRESH):
     """Per-trajectory variants of delta_x_avg, occlusion_acc, avg_jaccard for tapvid2d.
 
     Matches MVTracker's 'Our Metrics' convention (each track equally weighted).
@@ -224,7 +225,7 @@ def eval_outputs_pertraj(out, thresholds, avg_jaccard_val):
     dx_avg, _ = get_delta_x_avg_pertraj(cp, ct, vis_eff, thresholds)
     return {
         'delta_x_avg_pertraj':   float(dx_avg),
-        'occlusion_acc_pertraj': float(get_occlusion_accuracy_pertraj(vp, vt, mask=valid)),
+        'occlusion_acc_pertraj': float(get_occlusion_accuracy_pertraj(vp, vt, mask=valid, vis_thresh=vis_thresh)),
         'avg_jaccard_pertraj':   float(avg_jaccard_val),
     }
 
@@ -238,7 +239,7 @@ def _vis_true_from_cams(vis_true_cams):
     return known_visible.any(axis=-1, keepdims=True)
 
 
-def eval_outputs(out, thresholds, survival):
+def eval_outputs(out, thresholds, survival, vis_thresh=TRACKTAIL_VIS_THRESH):
     """Compute the full metric set from a predictions dict (an in-memory outputs dict or an
     np.load NpzFile -- both index by key and expose .files/keys)."""
     keys = set(out.files) if hasattr(out, 'files') else set(out)
@@ -265,7 +266,7 @@ def eval_outputs(out, thresholds, survival):
         vt = torch.as_tensor(np.asarray(out['vis_true']), dtype=torch.bool)
     m = get_eval_metrics(vp, vt, cp, ct, thresholds=thresholds,
                          survival_threshold=survival, prefix='', query_times=qt,
-                         vis_pred_2d=vp2d, vis_true_cams=vtc)
+                         vis_pred_2d=vp2d, vis_true_cams=vtc, vis_thresh=vis_thresh)
     m = {k: (v.tolist() if isinstance(v, np.ndarray) else float(v)) for k, v in m.items()}
     m.setdefault('occlusion_acc_percam', float('nan'))
     m['n_kpts'] = int(cp.shape[2])
@@ -374,6 +375,9 @@ def main():
                          'frames, so a smaller value re-crops more often for very fast subjects')
     ap.add_argument('--no-motion-margin', dest='motion_margin', action='store_false', default=True,
                     help='disable the causal motion-margin crop expansion (default ON)')
+    ap.add_argument('--vis-thresh', type=float, default=TRACKTAIL_VIS_THRESH,
+                    help='visibility threshold (sigmoid of the vis logit) for the occlusion state carried between '
+                         f'windows in inference and for AJ / occlusion accuracy (default {TRACKTAIL_VIS_THRESH})')
     ap.add_argument('--device', default='cuda:0')
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
@@ -426,11 +430,11 @@ def main():
         try:
             if w['cached']:
                 with np.load(w['npz'], allow_pickle=True) as data:
-                    m = eval_outputs(data, cfg['thresholds'], cfg['survival'])
+                    m = eval_outputs(data, cfg['thresholds'], cfg['survival'], vis_thresh=args.vis_thresh)
                     if ds in TAPVID3D_DATASETS:
-                        m.update(eval_outputs_cam(data, w['tp'], ds))
+                        m.update(eval_outputs_cam(data, w['tp'], ds, vis_thresh=args.vis_thresh))
                     if ds in TAPVID2D_DATASETS:
-                        m.update(eval_outputs_pertraj(data, cfg['thresholds'], m['avg_jaccard']))
+                        m.update(eval_outputs_pertraj(data, cfg['thresholds'], m['avg_jaccard'], vis_thresh=args.vis_thresh))
                 src = 'cached'
             else:
                 ms = get_model()
@@ -440,13 +444,13 @@ def main():
                     n_frames=args.n_frames, n_overlap=args.n_overlap, per_subject=True,
                     device=ms['device'], max_kpts=w['max_kpts'], n_views=w['n_views'],
                     seed=args.view_seed, outpath=w['npz'], query_first=True,
-                    motion_margin=args.motion_margin)
+                    motion_margin=args.motion_margin, vis_thresh=args.vis_thresh)
                 torch.cuda.empty_cache()
-                m = eval_outputs(out, cfg['thresholds'], cfg['survival'])
+                m = eval_outputs(out, cfg['thresholds'], cfg['survival'], vis_thresh=args.vis_thresh)
                 if ds in TAPVID3D_DATASETS:
-                    m.update(eval_outputs_cam(out, w['tp'], ds))
+                    m.update(eval_outputs_cam(out, w['tp'], ds, vis_thresh=args.vis_thresh))
                 if ds in TAPVID2D_DATASETS:
-                    m.update(eval_outputs_pertraj(out, cfg['thresholds'], m['avg_jaccard']))
+                    m.update(eval_outputs_pertraj(out, cfg['thresholds'], m['avg_jaccard'], vis_thresh=args.vis_thresh))
                 src = 'infer'
             m['trial'] = tid; m['status'] = 'ok'
             results[ds].append(m)

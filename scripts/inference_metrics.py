@@ -23,7 +23,7 @@ import torch
 from pathlib import Path
 from tqdm import tqdm
 
-from tracktail.model.eval_metrics import get_eval_metrics
+from tracktail.model.eval_metrics import get_eval_metrics, TRACKTAIL_VIS_THRESH
 
 
 # Per-dataset default thresholds (already divided to the correct scale).
@@ -118,6 +118,7 @@ def run_trial(npz_path, thresholds, survival_threshold, prefix):
         survival_threshold=survival_threshold,
         prefix=prefix,
         query_times=query_times,
+        vis_thresh=TRACKTAIL_VIS_THRESH,
     )
     return metrics
 

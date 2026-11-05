@@ -3,6 +3,12 @@ import numpy as np
 from tracktail.model.losses import get_vis_true
 
 
+# Visibility threshold for scoring tracktail's predictions (sigmoid(vis logit) > this counts as visible):
+# tracktail's visibility head is calibrated low, so 0.1 is used for it everywhere (inference, training
+# validation, test-set metrics). The metric functions default to 0.5, which the baselines are scored with.
+TRACKTAIL_VIS_THRESH = 0.1
+
+
 def get_direct_depth_metrics(pred_cams_direct, tri_pred, rays_c, coords_true,
                              vis_true_cams, prefix='eval/', cgroup=None):
     '''Decompose the per-camera DIRECT-head 3D error into along-ray (depth) vs
@@ -85,7 +91,9 @@ def get_eval_metrics(vis_pred, vis_true, coords_pred,
                      survival_threshold = 50, prefix = 'eval/',
                      cube_scale = None, delta_x_multiplier = 1.0,
                      query_times = None, vis_pred_2d = None,
-                     vis_true_cams = None):
+                     vis_true_cams = None, vis_thresh = 0.5):
+    # vis_thresh: predicted visible when sigmoid(vis logit) > vis_thresh (occlusion accuracy,
+    # Jaccard); tracktail is scored with TRACKTAIL_VIS_THRESH, baselines keep the default 0.5.
 
     # cube_scale: optional (B,) world-units-per-pixel (median over cameras). When given, the
     # delta_x thresholds become k * cube_scale * delta_x_multiplier world units, i.e. delta_x_k
@@ -124,7 +132,7 @@ def get_eval_metrics(vis_pred, vis_true, coords_pred,
 
     mte = get_mte(coords_pred, coords_true, vis_eff)
 
-    occlusion_acc = get_occlusion_accuracy(vis_pred, vis_true, mask=valid)
+    occlusion_acc = get_occlusion_accuracy(vis_pred, vis_true, mask=valid, vis_thresh=vis_thresh)
 
     mpjpe = get_mpjpe(coords_pred, coords_true, vis_pred, vis_eff)
 
@@ -137,7 +145,7 @@ def get_eval_metrics(vis_pred, vis_true, coords_pred,
 
     avg_jaccard, avg_jaccard_dict = get_average_jaccard(coords_pred,
         coords_true, vis_pred, vis_eff, thresholds=thresholds,
-        cube_scale=cube_scale, multiplier=delta_x_multiplier)
+        cube_scale=cube_scale, multiplier=delta_x_multiplier, vis_thresh=vis_thresh)
 
     l1 = get_l1(coords_pred, coords_true, vis_eff)
 
@@ -154,7 +162,7 @@ def get_eval_metrics(vis_pred, vis_true, coords_pred,
     # `valid` frame mask. Only computed when the caller supplies both tensors.
     if vis_pred_2d is not None and vis_true_cams is not None:
         metrics[f'{prefix}occlusion_acc_percam'] = get_occlusion_accuracy_per_cam(
-            vis_pred_2d, vis_true_cams, valid=valid)
+            vis_pred_2d, vis_true_cams, valid=valid, vis_thresh=vis_thresh)
 
     # add per-threshold metrics for delta_x and avg_jaccard
     for k, v in delta_x_dict.items(): 
@@ -228,7 +236,7 @@ def get_mte(coords_pred, coords_true, vis_true):
     return float(np.mean(track_mtes))
 
 
-def get_occlusion_accuracy(vis_pred, vis_true, mask=None):
+def get_occlusion_accuracy(vis_pred, vis_true, mask=None, vis_thresh=0.5):
     '''
     parameters:
         vis_pred: B, T, N, 1  (raw logit)
@@ -241,7 +249,7 @@ def get_occlusion_accuracy(vis_pred, vis_true, mask=None):
         occlusion_acc (float; NaN if no frames are counted)
     '''
 
-    occlusion_pred = _sigmoid(vis_pred) < 0.5
+    occlusion_pred = _sigmoid(vis_pred) < vis_thresh
     occlusion_true = ~vis_true
 
     correct = (occlusion_pred == occlusion_true)
@@ -253,7 +261,7 @@ def get_occlusion_accuracy(vis_pred, vis_true, mask=None):
     return float(np.mean(correct))
 
 
-def get_occlusion_accuracy_per_cam(vis_pred_2d, vis_true_cams, valid=None):
+def get_occlusion_accuracy_per_cam(vis_pred_2d, vis_true_cams, valid=None, vis_thresh=0.5):
     '''Per-camera occlusion accuracy: parallels get_occlusion_accuracy on the camera axis.
 
     parameters:
@@ -261,14 +269,14 @@ def get_occlusion_accuracy_per_cam(vis_pred_2d, vis_true_cams, valid=None):
         vis_true_cams: (B, T, N, cams) per-camera GT visibility; NaN = unknown (not counted).
         valid:         (B, T, N, 1) bool frame mask (finite GT + at/after query); None -> all.
 
-    Predicted-occluded = sigmoid(logit) < 0.5. GT-occluded = (vis <= 0.5) where known.
+    Predicted-occluded = sigmoid(logit) < vis_thresh. GT-occluded = (vis <= 0.5) where known.
     Accuracy is over {camera, valid, known} entries. Returns NaN if none.
     '''
     vp = _to_np(vis_pred_2d)                                # (cams, B, T, N)
     vt = _to_np(vis_true_cams)                              # (B, T, N, cams)
     vt = np.moveaxis(vt, -1, 0)                             # (cams, B, T, N)
 
-    occlusion_pred = _sigmoid(vp) < 0.5                    # (cams, B, T, N)
+    occlusion_pred = _sigmoid(vp) < vis_thresh             # (cams, B, T, N)
     known = np.isfinite(vt)                                 # NaN -> unknown, excluded
     occlusion_true = vt <= 0.5                              # meaningful only where known
 
@@ -517,7 +525,7 @@ def get_survival_rate(coords_pred, coords_true, vis_true, threshold = 50):
 
 
 def get_average_jaccard(coords_pred, coords_true, vis_pred, vis_true, thresholds=None,
-                        cube_scale=None, multiplier=1.0):
+                        cube_scale=None, multiplier=1.0, vis_thresh=0.5):
     '''
     Average Jaccard (MVTracker / TAP-Vid definition).
 
@@ -542,7 +550,7 @@ def get_average_jaccard(coords_pred, coords_true, vis_pred, vis_true, thresholds
         thresholds = [1, 2, 4, 8, 16]
 
     gt_vis  = np.squeeze(vis_true.astype(bool),  axis=-1)   # B, T, N
-    pred_vis = np.squeeze(_sigmoid(vis_pred) > 0.5, axis=-1) # B, T, N
+    pred_vis = np.squeeze(_sigmoid(vis_pred) > vis_thresh, axis=-1) # B, T, N
     dist    = np.linalg.norm(coords_pred - coords_true, axis=-1)  # B, T, N
     B, T, N = dist.shape
     cs = (np.asarray(cube_scale, dtype=np.float64).reshape(B) if cube_scale is not None
@@ -608,9 +616,9 @@ def get_delta_x_avg_pertraj(coords_pred, coords_true, vis_true, thresholds=None)
     return float(np.nanmean(results)), dict(zip(thresholds, results))
 
 
-def get_occlusion_accuracy_pertraj(vis_pred, vis_true, mask=None):
+def get_occlusion_accuracy_pertraj(vis_pred, vis_true, mask=None, vis_thresh=0.5):
     """Occlusion accuracy averaged per trajectory (equal weight per track)."""
-    occ_pred = _sigmoid(vis_pred) < 0.5                           # (B, T, N, 1)
+    occ_pred = _sigmoid(vis_pred) < vis_thresh                    # (B, T, N, 1)
     occ_true = ~vis_true                                          # (B, T, N, 1)
     correct = np.squeeze(occ_pred == occ_true, axis=-1)          # (B, T, N)
     if mask is not None:
@@ -764,7 +772,7 @@ def get_survival_rate_depth_relative(coords_pred, coords_true, vis_true,
 
 
 def get_average_jaccard_depth_relative(coords_pred, coords_true, vis_pred, vis_true,
-                                        thresholds_m, depths):
+                                        thresholds_m, depths, vis_thresh=0.5):
     """Average Jaccard with per-point per-frame depth-relative thresholds.
 
     Closeness threshold per point at frame t is Z_cam[t] * threshold_m.
@@ -773,7 +781,7 @@ def get_average_jaccard_depth_relative(coords_pred, coords_true, vis_pred, vis_t
     if d.ndim == 2:
         d = d[np.newaxis]                                          # (1, T, N)
     gt_vis   = np.squeeze(vis_true.astype(bool),    axis=-1)      # (B, T, N)
-    pred_vis = np.squeeze(_sigmoid(vis_pred) > 0.5, axis=-1)      # (B, T, N)
+    pred_vis = np.squeeze(_sigmoid(vis_pred) > vis_thresh, axis=-1)  # (B, T, N)
     dist     = np.linalg.norm(coords_pred - coords_true, axis=-1) # (B, T, N)
     B, _, N  = dist.shape
     per_thresh = {th: [] for th in thresholds_m}
@@ -886,13 +894,13 @@ def get_survival_rate_world_coord(coords_pred, coords_true, vis_true,
 
 
 def get_average_jaccard_world_coord(coords_pred, coords_true, vis_pred, vis_true,
-                                     thresholds_m, depths):
+                                     thresholds_m, depths, vis_thresh=0.5):
     """Average Jaccard with per-trajectory mean-depth normalization."""
     d        = np.asarray(depths, dtype=np.float64)
     if d.ndim == 2:
         d = d[np.newaxis]
     gt_vis   = np.squeeze(vis_true.astype(bool),    axis=-1)      # (B, T, N)
-    pred_vis = np.squeeze(_sigmoid(vis_pred) > 0.5, axis=-1)      # (B, T, N)
+    pred_vis = np.squeeze(_sigmoid(vis_pred) > vis_thresh, axis=-1)  # (B, T, N)
     dist     = np.linalg.norm(coords_pred - coords_true, axis=-1) # (B, T, N)
     B, _, N  = dist.shape
     per_thresh = {th: [] for th in thresholds_m}

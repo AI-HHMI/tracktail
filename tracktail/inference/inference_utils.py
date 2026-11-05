@@ -15,6 +15,7 @@ from collections import defaultdict
 from decord import VideoReader, cpu
 from aniposelib.cameras import CameraGroup, Camera
 
+from tracktail.model.eval_metrics import TRACKTAIL_VIS_THRESH
 from tracktail.datasets.utils import get_dirs, disassemble_extrinsics
 from tracktail.model.cube import project_points_torch
 from tracktail.model.tracker_encoder import TrackerEncoder
@@ -668,8 +669,12 @@ def run_tracker_encoder_on_videos(
     query_times=None,
     motion_margin=True,
     conf_crop_thresh=0.1,
+    vis_thresh=TRACKTAIL_VIS_THRESH,
 ):
     """Windowed multi-view tracking whose per-chunk crop FOLLOWS the subject.
+
+    vis_thresh: a point counts as visible in a camera when sigmoid(vis logit) >= vis_thresh; used for the predicted
+    occlusion state carried into the next window (occlusion_embedding models).
 
     Each chunk re-crops the video on the current (re-anchored) query so a moving subject
     stays in the model's field of view — the long-horizon fix that a single static crop
@@ -973,12 +978,12 @@ def run_tracker_encoder_on_videos(
 
             # Predicted per-camera occlusion for the re-anchored queries of the NEXT chunk:
             # threshold the model's vis_pred_2d at the last kept frame (same frame the
-            # re-anchor query comes from). visible(sigmoid>=0.5)->1, occluded->0 (no -1 from
+            # re-anchor query comes from). visible(sigmoid>=vis_thresh)->1, occluded->0 (no -1 from
             # a prediction). Only fed forward when the model uses the occlusion term.
             if getattr(model, 'occlusion_embedding', False) and 'vis_pred_2d' in outputs:
                 vp2d = outputs['vis_pred_2d']                    # (cams, b, t, M) logits
                 vp2d_last = vp2d[:, :, keep_len - 1]             # (cams, b, M)
-                occ_p = (torch.sigmoid(vp2d_last) >= 0.5).to(torch.int64)
+                occ_p = (torch.sigmoid(vp2d_last) >= vis_thresh).to(torch.int64)
                 occ_p = occ_p.permute(1, 2, 0).contiguous()      # (cams,b,M) -> (b,M,cams)
                 # Scatter to full N; not-yet points -> -1 (unknown). They are never read as
                 # active occlusion (a point is 'before' only after its real seed chunk).
@@ -1318,8 +1323,12 @@ def run_inference(
     query_first=True,
     motion_margin=True,
     max_points=None,
+    vis_thresh=TRACKTAIL_VIS_THRESH,
 ):
     """Run inference on one trial with an already-loaded model.
+
+    vis_thresh: visibility threshold for the predicted occlusion carried between windows (see
+    run_tracker_encoder_on_videos).
 
     Factored out of main() so a caller (e.g. a batch driver) can load the model
     once and reuse it across many trials. If outpath is given the outputs are
@@ -1415,6 +1424,7 @@ def run_inference(
                 occlusion_gt=subj_occlusion,
                 query_times=per_subject_query_times[subj_idx] if use_query_first else None,
                 motion_margin=motion_margin,
+                vis_thresh=vis_thresh,
             )
             subj_out['subject_idx'] = subj_idx
             all_subject_outputs.append(subj_out)
@@ -1488,6 +1498,7 @@ def run_inference(
             occlusion_gt=occlusion_flat,
             query_times=query_times_flat if use_query_first else None,
             motion_margin=motion_margin,
+            vis_thresh=vis_thresh,
         )
 
     # --- Ground-truth extraction ---
