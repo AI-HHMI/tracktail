@@ -3,28 +3,27 @@
 #BSUB -W 00:10 						# walltime in HH:MM or MMMM
 #BSUB -n 96 							# num CPU slots
 #BSUB -M 64000 						# memory limit in MB
-#BSUB -e ~/logs/posetail/%J.err 	# error file
-#BSUB -o ~/logs/posetail/%J.out 	# out file
+#BSUB -e ~/logs/tracktail/%J.err 	# error file
+#BSUB -o ~/logs/tracktail/%J.out 	# out file
 #BSUB -R "span[hosts=1]" 			# number of nodes spanned by gpus
 #BSUB -q gpu_h200_parallel   		# type of gpu
 #BSUB -gpu "num=8" 					# number of gpus
 
 # define model params
-CONFIG_PATH=${1:-"configs/config_default_3d.toml"}
+CONFIG_PATH=${1:-"configs/archive/config_default_3d.toml"}
 NUM_NODES=${2:-1}
 PRECISION=${3:-"32"}
 STRATEGY=${4:-"ddp"}
 echo "using config $CONFIG_PATH"
 echo "pwd: $PWD"
 
-source ~/.setup_env_vars.sh
+[ -f ~/.setup_env_vars.sh ] && . ~/.setup_env_vars.sh
 
 # gpu specs
 nvidia-smi
 
 # pixi environment 
 export PATH="$HOME/.pixi/bin:$PATH"
-export PYTHONPATH="/groups/karashchuk/home/karashchukl/builds/vjepa2:$PYTHONPATH"
 pixi --version
 
 pixi install 

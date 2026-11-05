@@ -52,11 +52,11 @@ from tracktail.model.train_utils import _warn_unfilled_video_encoder
 from schedulefree import AdamWScheduleFree
 
 ''' 
-python train.py --config-path configs/config_default_2d.toml
-python train.py --config-path configs/config_default_3d.toml --devices 1
-python train.py --config-path configs/config_default_3d.toml --devices 1 2
-pixi run python train.py --config-path configs/config_default_3d.toml --precision 32 --devices 1 
-pixi run python train.py --config-path configs/tuning/config_encoder_3d_2d.toml --precision 32 --devices 1 --strategy ddp_find_unused_parameters_true
+python train.py --config-path configs/archive/config_default_2d.toml
+python train.py --config-path configs/archive/config_default_3d.toml --devices 1
+python train.py --config-path configs/archive/config_default_3d.toml --devices 1 2
+pixi run python train.py --config-path configs/archive/config_default_3d.toml --precision 32 --devices 1 
+pixi run python train.py --config-path configs/archive/config_encoder_3d_2d.toml --precision 32 --devices 1 --strategy ddp_find_unused_parameters_true
 '''
 
 def parse_args(): 

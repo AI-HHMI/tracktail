@@ -1,13 +1,17 @@
+# Animal-data finetune of tracktail-static-animal. ${VAR} values are read from the environment
+# (tracktail.model.train_utils.load_config): TRACKTAIL_DATA = dataset root, TRACKTAIL_RESULTS = output root,
+# INIT_CKPT = checkpoint to continue from (finetune = false resumes weights + optimizer; set finetune = true
+# to start from a model's weights only).
 [wandb]
-project_name = 'posetail-pretraining-v6'
-path = '/groups/karashchuk/home/karashchukl/results/posetail-finetuning-v6'
+project_name = 'tracktail-finetuning'
+path = '${TRACKTAIL_RESULTS}/training'
 mode = 'online' # 'online', 'offline', 'disabled'
 
 [dataset]
 # batch_size=1 REQUIRED for mixed 2D+3D (2D loss assumes B=cams=1). Multi-GPU: --strategy ddp.
 batch_size = 1
 num_workers = 12
-prefix = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-finetuning-v6'
+prefix = '${TRACKTAIL_DATA}'
 # datasets_to_exclude = ['tartan-air', 'dynamic-replica', 'po-human-moving-small', 'po-animal-moving-sub256-motion', 'kubric-multiview-moving']
 
 [dataset.train]
@@ -156,7 +160,7 @@ depth_log_max = 2.5
 seed = 0
 
 finetune = false
-checkpoint_path = '/groups/karashchuk/home/karashchukl/results/posetail-finetuning-v6/wandb/run-20260924_100823-v3yhgr56/files/checkpoints/checkpoint_00512002.pth'
+checkpoint_path = '${INIT_CKPT}'
 
 n_iterations = 8000000
 scheduler_type = 'muon'
