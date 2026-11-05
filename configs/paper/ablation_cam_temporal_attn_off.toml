@@ -11,7 +11,7 @@
 #   (plus dataset.val/test n_frames = 16, which affects validation only). 800k iterations, checkpoint 799996.
 
 [wandb]
-project_name = 'posetail-pretraining-v6'
+project_name = 'tracktail-paper'   # W&B project (the paper runs logged to the on-disk project posetail-pretraining-v6)
 path = '${TRACKTAIL_RESULTS}/training'
 mode = 'online' # 'online', 'offline', 'disabled'
 

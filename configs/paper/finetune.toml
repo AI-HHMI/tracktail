@@ -12,7 +12,7 @@
 # Initialized from the pretrain model (checkpoint_path, finetune = true -> weights only, fresh optimizer).
 
 [wandb]
-project_name = 'posetail-pretraining-v6'
+project_name = 'tracktail-paper'   # W&B project (the paper runs logged to the on-disk project posetail-pretraining-v6)
 path = '${TRACKTAIL_RESULTS}/training'
 mode = 'online' # 'online', 'offline', 'disabled'
 
