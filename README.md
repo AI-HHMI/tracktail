@@ -181,8 +181,8 @@ trial/
 
 "static" means static (calibrated, non-moving) cameras. Use `tracktail-static-animal` for animal
 recordings; use `tracktail-static` for general scenes and to compare with the paper's numbers.
-The paper's pretrained and ablation checkpoints are in `ai-hhmi/tracktail-paper-checkpoints`
-(one subfolder per model; see the `paper` branch).
+The paper's pretrained and ablation models are not released; their training configs are on the
+`paper` branch (`configs/paper/`).
 
 ## Conventions
 - **Extrinsics** are world→camera 4×4 matrices. **Units** can be anything, because the model

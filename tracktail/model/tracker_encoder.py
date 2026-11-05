@@ -49,8 +49,8 @@ class TrackerEncoder(nn.Module):
             revision: Hub revision to download. Defaults to the repository's default branch.
             device: Device for the model and checkpoint. Defaults to CUDA when available.
             cache_dir: Optional Hugging Face cache directory.
-            subfolder: Optional folder inside the repository holding ``model.pth``, e.g.
-                ``"pretrain"`` for ``ai-hhmi/tracktail-paper-checkpoints``.
+            subfolder: Optional folder inside the repository holding ``model.pth``, for repos
+                with several models (e.g. ``"<model-name>"`` for ``<repo>/<model-name>/model.pth``).
 
         Returns:
             A ``TrackerEncoder`` in evaluation mode on ``device``.
