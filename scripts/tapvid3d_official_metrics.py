@@ -29,7 +29,7 @@ import os
 import numpy as np
 import yaml
 
-DEFAULT_ROOT = '/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6'
+DEFAULT_ROOT = os.environ.get('TRACKTAIL_DATA')
 DATASETS = ['tapvid3d_adt', 'tapvid3d_drivetrack', 'tapvid3d_pstudio']
 
 # ARROW paper (arXiv 2610.01314v1), Table 2, camera-coordinate 3D tracking on the TAPVid-3D mini-val split,
@@ -143,7 +143,8 @@ def score_npz(path, trial_path, scaling, post_query=False, vis_thresh=0.5):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--out', required=True, help='predictions folder: <out>/<dataset>/<seq>_<id>.npz')
-    ap.add_argument('--root', default=DEFAULT_ROOT)
+    ap.add_argument('--root', default=DEFAULT_ROOT, required=DEFAULT_ROOT is None,
+                    help='dataset root with the tapvid3d_* ground truth (default $TRACKTAIL_DATA)')
     ap.add_argument('--datasets', nargs='+', default=None, help='default: the tapvid3d_* folders in --out')
     ap.add_argument('--trials-json', default=None,
                     help='json {dataset: [trial ids]} restricting the scored trials (e.g. tapvid3d_minival.json)')

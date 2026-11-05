@@ -38,11 +38,8 @@ if [[ "$1" != "--worker" ]]; then
     for DS in ${@:-$DATASETS}; do   # one job per dataset
         J="${NAME}_${DS}_official_${SPLIT}${SUFFIX}"
         CMD="env NAME=$NAME SPLIT=$SPLIT MAX_FRAMES=$MAX_FRAMES GT_POSES=$GT_POSES VIS_THRESH=$VIS_THRESH QUERY_OCC=$QUERY_OCC OUT=$OUT REPO=$REPO bash $SELF --worker $DS"
-        if command -v bsub >/dev/null 2>&1; then
-            bsub -J "$J" -W "$WALL" -e "$LOGS/$J-%J.err" -o "$LOGS/$J-%J.out" -n 8 -q "$QUEUE" -gpu "num=1" $CMD
-        else   # not on a submit host: go through login2
-            ssh -n -o BatchMode=yes login2 "bsub -J '$J' -W '$WALL' -e '$LOGS/$J-%J.err' -o '$LOGS/$J-%J.out' -n 8 -q '$QUEUE' -gpu 'num=1' $CMD"
-        fi
+        command -v bsub >/dev/null 2>&1 || { echo "SUBMIT=1 needs LSF (bsub)"; exit 1; }
+        bsub -J "$J" -W "$WALL" -e "$LOGS/$J-%J.err" -o "$LOGS/$J-%J.out" -n 8 -q "$QUEUE" -gpu "num=1" $CMD
     done
     echo "logs: $LOGS   results: $OUT"
     exit 0
@@ -54,14 +51,15 @@ shift
 cd "$REPO"
 PYTHON=$PIXI_PYTHON
 
+MODEL_ARGS=$(model_args "$NAME")
 SPLIT_ARGS=$([[ "$SPLIT" == "full" ]] && echo "--all-trials" || echo "--trials-json arrow_baseline/tapvid3d_minival.json")
 mkdir -p "$OUT"
 for DS in "$@"; do
     echo "starting tracktail tapvid3d (official protocol): $NAME / $DS ($SPLIT) -> $OUT"
-    $PYTHON scripts/tracktail_tapvid3d_official.py $(model_args "$NAME") --root "$TRACKTAIL_DATA" --out "$OUT" --datasets "$DS" \
+    $PYTHON scripts/tracktail_tapvid3d_official.py $MODEL_ARGS --root "$TRACKTAIL_DATA" --out "$OUT" --datasets "$DS" \
         $SPLIT_ARGS --device "${DEVICE:-cuda:0}" ${MAX_FRAMES:+--max-frames $MAX_FRAMES} ${GT_POSES:+--gt-poses} --vis-thresh $VIS_THRESH --query-occlusion $QUERY_OCC
     # official metrics over the datasets that have predictions: median scaling (official default) and none (metric)
-    $PYTHON scripts/tapvid3d_official_metrics.py --out "$OUT" --scaling median --tag _median --vis-thresh $VIS_THRESH
-    $PYTHON scripts/tapvid3d_official_metrics.py --out "$OUT" --scaling none --tag _none --vis-thresh $VIS_THRESH
+    $PYTHON scripts/tapvid3d_official_metrics.py --out "$OUT" --root "$TRACKTAIL_DATA" --scaling median --tag _median --vis-thresh $VIS_THRESH
+    $PYTHON scripts/tapvid3d_official_metrics.py --out "$OUT" --root "$TRACKTAIL_DATA" --scaling none --tag _none --vis-thresh $VIS_THRESH
 done
 echo "done!"
