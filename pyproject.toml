@@ -19,8 +19,7 @@ dependencies = [
     "imgaug", "imagecorruptions",
     "setuptools<81",
     "schedulefree", "decord", "tqdm",
-    "fastapi>=0.111", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9",
-    "requests>=2.31", "huggingface_hub>=0.30",
+    "huggingface_hub>=0.30",
     ]
 requires-python = ">=3.11"
 description = "Multi-view 3D point tracking without depth input"
