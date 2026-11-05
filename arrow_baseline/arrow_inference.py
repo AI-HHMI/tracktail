@@ -24,7 +24,7 @@ temporal encoding, so any image set works). At most --max-anchors anchor images 
 are split across several encodings of the same window. The cameras are static, so the first camera's frame is the same
 coordinate system for every window; each encoding has its own scale.
 
-With --reference target (TAPVid-3D, arrow_tapvid3d.sh), each target is predicted in its own camera's coordinate system
+With --reference target (TAPVid-3D), each target is predicted in its own camera's coordinate system
 (the reference observation is the target timestep of the first camera) instead of the first camera at timestep 0: this
 is the paper's camera-coordinate TAPVid-3D protocol (Sec. 4), for ground truth given per frame in the camera's own
 coordinates (static identity extrinsics in metadata.yaml, as in the tapvid3d_* datasets); the scale fit and the

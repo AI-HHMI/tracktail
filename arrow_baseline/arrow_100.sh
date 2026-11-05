@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ARROW on 100 tracks per trial: a random subset of MVTracker's cached tracks (pose3d_cached_100.npz,
 # scripts/make_pose3d_cached_100.py), with the paper-protocol metrics and --query-first (each track is queried at the
-# frame the file gives it). Same runs as cotracker_100.sh / tracktail_100.sh; the outputs are what arrow_render.sh
-# renders for the qualitative figure.
+# frame the file gives it). Same runs as cotracker_100.sh / tracktail_100.sh; the outputs are what
+# scripts/render_qualitative_gtvis.sh renders for the qualitative figure.
 #
 # Usage:
 #   bash arrow_100.sh [canonical] [DATASETS] [POSE_FILE]

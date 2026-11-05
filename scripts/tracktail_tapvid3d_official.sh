@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Tracktail on TAPVid-3D with the official benchmark protocol (the counterpart of arrow_baseline/arrow_tapvid3d.sh, for a
-# like-for-like comparison with ARROW / D4RT): the benchmark's own queries (queries_xyt), tracked forward and backward
+# Tracktail on TAPVid-3D with the official benchmark protocol (for a like-for-like comparison with the ARROW / D4RT
+# numbers): the benchmark's own queries (queries_xyt), tracked forward and backward
 # (time-reversed video), every frame scored with the official TAPVid-3D metric (scripts/tapvid3d_official_metrics.py:
 # depth-adaptive 1-16 px thresholds at 256 px, per-video median scaling; also without scaling, tracktail being metric).
 #
