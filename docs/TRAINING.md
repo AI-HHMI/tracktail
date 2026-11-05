@@ -26,7 +26,6 @@ in `configs/paper/`.
 ## Configs
 - Animal finetune of `tracktail-static-animal`: `configs/config_tracktail_finetuning_v6.toml`.
 - Scorer: `configs/config_scorer.toml`.
-- `configs/archive/`: older development configs.
 
 Key sections: `[model]`, `[dataset.*]`, `[training]` (optimizer: AdamW, schedule-free, or
 Muon; losses; `checkpoint_path`/`finetune`), and `[wandb]`. Iteration counts are **totals
