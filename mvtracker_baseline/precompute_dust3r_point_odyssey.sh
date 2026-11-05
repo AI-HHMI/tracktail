@@ -1,39 +1,43 @@
 #!/usr/bin/env bash
 # Precompute DUSt3R depths for Point Odyssey datasets.
-# Outputs are written into the dataset directories under posetail-pretraining-v6.
+# Outputs are written into the trial dirs under $TRACKTAIL_DATA (<trial>/duster-views-<views>/).
+# Paths come from paper.env (TRACKTAIL_DATA, MVTRACKER_REPO, DUST3R_REPO, DUST3R_CKPT, DUST3R_PYTHON).
+# Env overrides: DATASET_ROOT, PYTHON, CKPT, DEVICE (default cuda:0).
 #
 # Usage:
 #   bash precompute_dust3r_point_odyssey.sh [N_VIEWS]
-#   N_VIEWS: number of cameras to subsample (default: all)
-#
-# Examples:
-#   bash precompute_dust3r_point_odyssey.sh      # all cams
-#   bash precompute_dust3r_point_odyssey.sh 4   # 4 cams with seed 0
+#   N_VIEWS: 4 = the paper's 4 cameras view2 view4 view5 view7 (duster-views-2-4-5-7); empty = all 9 cameras
+#   (duster-views-0-1-2-3-4-5-6-7-8); other numbers subsample cameras with seed 0.
+# The paper needs both: bash precompute_dust3r_point_odyssey.sh 4 && bash precompute_dust3r_point_odyssey.sh
 
 set -e
 
 N_VIEWS=${1:-}
 
-cd /groups/karashchuk/home/ruppk2
+SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(cd "$SCRIPTS/.." && pwd)"
+source "$REPO/scripts/paper_common.sh"
+BASELINE_LD=${LD_LIBRARY_PATH:-}   # LD_LIBRARY_PATH without the pixi libs of paper_common.sh (those are for the pixi python)
+while [[ "$BASELINE_LD" == "$PAPER_REPO/.pixi/envs/default/lib:"* ]]; do BASELINE_LD=${BASELINE_LD#"$PAPER_REPO/.pixi/envs/default/lib:"}; done
+export PYTHONPATH="$MVTRACKER_REPO:$DUST3R_REPO:$REPO${PYTHONPATH:+:$PYTHONPATH}"
 
-export PYTHONPATH="/groups/karashchuk/home/ruppk2/github/mvtracker:/groups/karashchuk/home/ruppk2/github/dust3r:/groups/karashchuk/home/ruppk2/github/posetail:$PYTHONPATH"
+PYTHON=${PYTHON:-env LD_LIBRARY_PATH=$BASELINE_LD $DUST3R_PYTHON}
+CKPT=${CKPT:-$DUST3R_CKPT}
+DEVICE=${DEVICE:-cuda:0}
+SCRIPT="$SCRIPTS/precompute_dust3r_depths.py"
+DATASET_ROOT=${DATASET_ROOT:-$TRACKTAIL_DATA}
 
-PYTHON=/groups/karashchuk/home/ruppk2/miniforge3/envs/mvtracker/bin/python
-SCRIPT=/groups/karashchuk/home/ruppk2/github/posetail/mvtracker_baseline/precompute_dust3r_depths.py
-CKPT=/groups/karashchuk/karashchuklab/mvtracker-datasets/checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth
-DATASET_ROOT=/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6
-
-N_VIEWS_ARG=${N_VIEWS:+--n-views $N_VIEWS}
+if [[ "$N_VIEWS" == "4" ]]; then N_VIEWS_ARG="--cam-names view2 view4 view5 view7"; else N_VIEWS_ARG=${N_VIEWS:+--n-views $N_VIEWS}; fi
 
 for DATASET in point-odyssey-human po-animal-sub256-motion; do
     echo "=== $DATASET ==="
-    $PYTHON $SCRIPT \
+    $PYTHON "$SCRIPT" \
         --dataset-root "$DATASET_ROOT" \
         --depth-root   "$DATASET_ROOT" \
         --datasets     "$DATASET" \
         --split test \
         --checkpoint "$CKPT" \
-        --device cuda:0 \
+        --device "$DEVICE" \
         $N_VIEWS_ARG \
         --view-seed 0
 done

@@ -12,8 +12,8 @@ Output layout:
 
 Usage:
     python preprocess_gt_depths_point_odyssey.py \\
-        --raw-root   /groups/karashchuk/karashchuklab/animal-datasets/point-odyssey/results/test_animal \\
-        --output-root /groups/karashchuk/karashchuklab/animal-datasets-processed/po-animal/point-odyssey-animal/test \\
+        --raw-root   <raw Point Odyssey renders>/test_animal \\
+        --output-root $TRACKTAIL_DATA/po-animal-sub256-motion/test \\
         --depth-scale 1.0
 """
 

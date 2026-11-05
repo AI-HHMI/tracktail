@@ -31,11 +31,8 @@ import yaml
 from pathlib import Path
 from tqdm import tqdm
 
-try:
-    from tracktail.model.eval_metrics import get_eval_metrics
-    from tracktail.model.eval_metrics_paper import PAPER_MOVEMENT_THRESHOLDS, get_eval_metrics_paper
-except ImportError:   # checkout that still uses the old package name (no paper metrics there)
-    from posetail.posetail.eval_metrics import get_eval_metrics
+from tracktail.model.eval_metrics import get_eval_metrics
+from tracktail.model.eval_metrics_paper import PAPER_MOVEMENT_THRESHOLDS, get_eval_metrics_paper
 
 
 DATASET_THRESHOLDS = {
@@ -127,10 +124,10 @@ def run_trial(pred_path, pose_path, thresholds, survival_threshold, prefix, data
     pred  = np.load(pred_path)
     keys  = set(pred.files)
 
-    # Support both posetail format (coords_pred/vis_pred embedded GT) and
+    # Support both the Tracktail output format (coords_pred/vis_pred embedded GT) and
     # legacy format (coords_3d/visibility with GT loaded from pose_path).
     if 'coords_pred' in keys:
-        # Posetail format — GT already embedded
+        # Tracktail output format — GT already embedded
         coords_pred = torch.from_numpy(np.asarray(pred['coords_pred']).astype(np.float32))
         vis_pred    = torch.from_numpy(np.asarray(pred['vis_pred']).astype(np.float32))
         coords_true = torch.from_numpy(np.asarray(pred['coords_true']).astype(np.float32))

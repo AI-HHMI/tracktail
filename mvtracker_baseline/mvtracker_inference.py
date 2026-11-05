@@ -5,15 +5,9 @@ MVTracker is a native multi-view 3D tracker: it takes all camera views
 simultaneously and outputs 3D tracks directly — no triangulation step needed.
 
 Depth maps are estimated per frame using DUSt3R. The MVTracker repo must be
-in PYTHONPATH. Clone it and install its requirements first:
-
-    git clone https://github.com/ethz-vlg/mvtracker.git
-    pip install -r mvtracker/requirements.full.txt
-    export PYTHONPATH="/path/to/mvtracker:$PYTHONPATH"
-
-Download the checkpoint:
-    wget https://huggingface.co/ethz-vlg/mvtracker/resolve/main/mvtracker_200000_june2025.pth \\
-         -P checkpoints/
+in PYTHONPATH, and MVT_HUB_DIR should point at the same pinned clone so torch.hub
+loads it locally (baselines/setup.sh sets up both and downloads the checkpoint;
+see baselines/README.md). The drivers in this folder set this up from paper.env.
 
 Outputs are saved to:
     <output_root>/dataset/split/session/trial/mvtracker_3d.npz
@@ -29,11 +23,11 @@ cotracker_metrics.py can evaluate it with --prefix mvtracker_:
 Example
 -------
     python mvtracker_inference.py \\
-        --dataset-root /data/posetail-pretraining-v5 \\
-        --output-root  /home/user/mvtracker-outputs \\
+        --dataset-root $TRACKTAIL_DATA \\
+        --output-root  $TRACKTAIL_RESULTS/mvtracker-outputs/my-run \\
         --datasets kubric-multiview dex_ycb cmupanoptic_3dgs \\
         --split test \\
-        --checkpoint checkpoints/mvtracker_200000_june2025.pth \\
+        --checkpoint $MVTRACKER_CKPT \\
         --device cuda:0
 """
 
@@ -47,22 +41,15 @@ import torch
 import yaml
 from tqdm import tqdm
 
-try:
-    from tracktail.datasets.utils import get_dirs
-    from tracktail.inference.inference_utils import (
-        build_video_readers,
-        compute_query_first,
-        load_multiview_clip,
-    )
-except ImportError:   # checkout that still uses the old package name (no compute_query_first / --query-first)
-    from posetail.datasets.utils import get_dirs
-    from posetail.inference.inference_utils import (
-        build_video_readers,
-        load_multiview_clip,
-    )
+from tracktail.datasets.utils import get_dirs
+from tracktail.inference.inference_utils import (
+    build_video_readers,
+    compute_query_first,
+    load_multiview_clip,
+)
 
 # MVTracker's own per-dataset evaluation settings (configs/model/mvtracker.yaml, evaluation.predictor_settings),
-# used with --official-settings. Keyed by the posetail dataset name.
+# used with --official-settings. Keyed by the dataset name in $TRACKTAIL_DATA.
 OFFICIAL_PREDICTOR_SETTINGS = {
     'kubric-multiview': dict(visibility_threshold=0.5,  grid_size=4, local_grid_size=18),
     'dex_ycb':          dict(visibility_threshold=0.01, grid_size=4, local_grid_size=18),
@@ -92,18 +79,20 @@ def build_model(checkpoint, device, dataset_name=None, official_settings=False, 
     """MVTracker from torch.hub; with official_settings the predictor uses MVTracker's per-dataset settings.
     vis_threshold replaces the visibility threshold of those settings (a track is visible when its probability of
     being visible is above it)."""
+    hub_dir = os.environ.get("MVT_HUB_DIR")   # local clone of ethz-vlg/mvtracker (unset: GitHub main)
+    hub_src = {"source": "local"} if hub_dir else {}
     if official_settings:
         kwargs = dict(OFFICIAL_PREDICTOR_SETTINGS[dataset_name], n_iters=OFFICIAL_N_ITERS)
         if vis_threshold is not None:
             kwargs['visibility_threshold'] = vis_threshold
         print(f"Loading MVTracker with the official settings for {dataset_name}: {kwargs}")
-        hub_dir = os.environ.get("MVT_HUB_DIR")   # optional local clone of ethz-vlg/mvtracker (default: GitHub)
         model = torch.hub.load(hub_dir or "ethz-vlg/mvtracker", "mvtracker_predictor", pretrained=False,
                                device=str(device), predictor_kwargs=kwargs,
-                               **({"source": "local"} if hub_dir else {}))
+                               **hub_src)
     else:
         print("Loading MVTracker…")
-        model = torch.hub.load("ethz-vlg/mvtracker", "mvtracker", pretrained=False, device=device)
+        model = torch.hub.load(hub_dir or "ethz-vlg/mvtracker", "mvtracker", pretrained=False, device=device,
+                               **hub_src)
     ckpt = torch.load(checkpoint, map_location="cpu")
     # Checkpoint keys have no "model." prefix but EvaluationPredictor stores
     # the inner MVTracker as self.model — load into the inner model directly.
@@ -462,7 +451,7 @@ def process_trial(
     else:
         depths_np = load_precomputed_depths(depth_dir, frame_numbers, H_orig, W_orig, depth_subdir)  # (T, C_file, H_orig, W_orig)
 
-    # Resize and pad frames + depths to TARGET_RES × TARGET_RES (matching posetail's inference resolution)
+    # Resize and pad frames + depths to TARGET_RES × TARGET_RES (matching Tracktail's inference resolution)
     TARGET_RES = 256
     rp_scale    = TARGET_RES / max(H_orig, W_orig)
     new_H_rp    = int(round(H_orig * rp_scale))
@@ -579,14 +568,14 @@ def process_trial(
         # X' = R (s X) + t  =>  X = R^T (X' - t) / s
         traj_e = ((traj_e - trans) @ rot) / scale
 
-    # Convert vis_e to float logits for posetail-compatible vis_pred: (1, T, N, 1)
+    # Convert vis_e to float logits for Tracktail-compatible vis_pred: (1, T, N, 1)
     if vis_e.dtype == bool or vis_e.dtype == np.bool_:
         vis_pred = np.where(vis_e, 10.0, -10.0).astype(np.float32)
     else:
         vis_pred = vis_e.astype(np.float32)
     vis_pred = vis_pred[np.newaxis, :, :, np.newaxis]   # (1, T, N, 1)
 
-    # Load GT for posetail-compatible output (same logic as load_ground_truth in mvtracker_metrics.py)
+    # Load GT for Tracktail-compatible output (same logic as load_ground_truth in mvtracker_metrics.py)
     pose_data  = np.load(pose_path)
     coords_gt  = pose_data['pose']                                          # (S, T_full, K, 3)
     vis_gt_raw = pose_data['vis'] if 'vis' in pose_data else None

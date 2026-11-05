@@ -2,7 +2,7 @@
 Run MVTracker inference on MVTracker-native datasets (kubric-multiview,
 dex-ycb-multiview, panoptic-multiview).
 
-These datasets store images/cameras differently from the posetail format used by
+These datasets store images/cameras differently from the trial-dir format ($TRACKTAIL_DATA) used by
 mvtracker_inference.py. This script handles their native layouts while producing
 the same output format: mvtracker_3d_{depth_subdir}.npz per trial.
 
@@ -16,17 +16,18 @@ Supported datasets and their depth subdirs:
                         duster-views-1-4-7-11
                         duster-views-1-7-14-20
 
-Usage:
-    cd ~
-    export PYTHONPATH="/groups/karashchuk/home/ruppk2/github/mvtracker:/groups/karashchuk/home/ruppk2/github/dust3r:$PYTHONPATH"
-    export TORCH_HOME=/groups/karashchuk/home/ruppk2/.cache/torch
+Paper use: the paper runs go through mvtracker_inference.py (mvtracker_cached.sh), which imports this module only
+for its native depth loaders (--depth-type gt-native: kubric / panoptic GT depth, DexYCB sensor depth). Running
+this script on its own is a legacy path that was not used for the paper tables.
 
-    python mvtracker_inference_native.py \\
+Usage (paths from paper.env):
+    export PYTHONPATH="$MVTRACKER_REPO:$DUST3R_REPO:$PYTHONPATH" MVT_HUB_DIR
+    $MVTRACKER_PYTHON mvtracker_inference_native_official.py \\
         --dataset-type kubric \\
-        --data-root /groups/karashchuk/karashchuklab/mvtracker-datasets \\
-        --output-root /groups/karashchuk/home/ruppk2/mvtracker-outputs \\
+        --data-root $MVTRACKER_DATA \\
+        --output-root $TRACKTAIL_RESULTS/mvtracker-outputs/native-kubric \\
         --depth-subdir duster-views-0123456789 \\
-        --checkpoint /groups/karashchuk/karashchuklab/mvtracker-datasets/checkpoints/mvtracker_200000_june2025.pth \\
+        --checkpoint $MVTRACKER_CKPT \\
         --device cuda:0 \\
         --max-queries 512
 """
@@ -323,7 +324,7 @@ def load_panoptic_queries(trial_dir: Path, max_queries: int | None = None,
 
 # ── per-trial inference ───────────────────────────────────────────────────────
 
-POSETAIL_SUBDIR = {
+TRACKTAIL_SUBDIR = {
     "kubric":   ("kubric-multiview", lambda name: f"test/{name}/trial"),
     "panoptic": ("cmupanoptic_3dgs", lambda name: f"test/{name}/trial"),
     "dex-ycb":  ("dex_ycb",         lambda name: f"test/{name}/trial"),
@@ -339,11 +340,11 @@ def _view_dir_name(dataset_type: str, v: int) -> str:
         return f"view_{v}"       # view_0, view_1, ... (kubric)
 
 
-def posetail_trial_paths(posetail_root: Path, dataset_type: str,
+def tracktail_trial_paths(tracktail_root: Path, dataset_type: str,
                          trial_name: str, views: list[int]):
     """Return (metadata_path, video_paths) for render_video.py compatibility."""
-    ds_dir, trial_fn = POSETAIL_SUBDIR[dataset_type]
-    trial_path = posetail_root / ds_dir / trial_fn(trial_name)
+    ds_dir, trial_fn = TRACKTAIL_SUBDIR[dataset_type]
+    trial_path = tracktail_root / ds_dir / trial_fn(trial_name)
     metadata_path = str(trial_path / "metadata.yaml")
     img_root = trial_path / "img"
     video_paths = [str(img_root / _view_dir_name(dataset_type, v)) for v in views]
@@ -362,7 +363,7 @@ def process_trial(
     max_queries: int | None = None,
     query_seed: int | None = None,
     overwrite: bool = False,
-    posetail_root: Path | None = None,
+    tracktail_root: Path | None = None,
     trial_index: int = 0,
     use_cached_tracks: bool = True,
 ):
@@ -427,7 +428,7 @@ def process_trial(
         raise ValueError(f"Unknown depth_type: {depth_type!r}")
 
     if os.environ.get('MVT_NATIVE_RES') != '1':
-        # -- resize + pad to 256×256 (matching posetail's inference resolution) -----
+        # -- resize + pad to 256×256 (matching Tracktail's inference resolution) -----
         TARGET_RES  = 256
         rp_scale    = TARGET_RES / max(H, W)
         new_H_rp    = int(round(H * rp_scale))
@@ -554,9 +555,9 @@ def process_trial(
     if norm_info is not None:
         save_dict.update(norm_info)
         save_dict['coords_3d_normalized'] = traj_e_normalized.astype(np.float32)
-    if posetail_root is not None:
-        metadata_path, video_paths = posetail_trial_paths(
-            posetail_root, dataset_type, trial_dir.name, views)
+    if tracktail_root is not None:
+        metadata_path, video_paths = tracktail_trial_paths(
+            tracktail_root, dataset_type, trial_dir.name, views)
         save_dict["metadata_path"] = np.array(metadata_path, dtype=str)
         save_dict["video_paths"]   = np.array(video_paths,   dtype=str)
     np.savez(str(out_path), **save_dict)
@@ -632,8 +633,8 @@ def parse_args():
     p.add_argument("--overwrite", action="store_true")
     p.add_argument("--depth-subdir", type=str, default=None,
                    help="Override the auto-computed DUSt3R depth subdir name")
-    p.add_argument("--posetail-root", type=str, default=None,
-                   help="Root of posetail-pretraining-v6 to save video_paths/metadata_path "
+    p.add_argument("--tracktail-root", type=str, default=None,
+                   help="Root of the trial-dir datasets ($TRACKTAIL_DATA) to save video_paths/metadata_path "
                         "for render_video.py compatibility")
     return p.parse_args()
 
@@ -709,7 +710,7 @@ def main():
             trial_index    = _order.get(trial_dir.name, 0),
             use_cached_tracks = not args.no_cached_tracks,
             overwrite      = args.overwrite,
-            posetail_root  = Path(args.posetail_root) if args.posetail_root else None,
+            tracktail_root  = Path(args.tracktail_root) if args.tracktail_root else None,
         )
 
     print("Done.")

@@ -4,7 +4,7 @@
 # scripts/make_pose3d_cached_100.py), on the canonical cameras, with the paper-protocol metrics. This is
 # mvtracker_cached.sh (query_first, MVTracker's official per-dataset settings and scene normalization, DUSt3R and
 # ground-truth depths, linking of the canonical depths) run on the 100-track files; see there for the steps.
-# Results: $OUTPUT_BASE/paper-canonical-cached-100-duster and ...-gt
+# Results: $OUTPUT_BASE/paper-canonical-cached-100-duster and ...-gt (default OUTPUT_BASE = $MVTRACKER_OUT_BASE).
 #
 # Usage:
 #   bash mvtracker_100.sh [canonical] [DATASETS] [POSE_FILE]
@@ -28,7 +28,6 @@ if [[ "$MODE" != "canonical" ]]; then
 fi
 
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export OUTPUT_BASE="${OUTPUT_BASE:-/groups/karashchuk/home/ruppk2/results/paper-final-v2/mvtracker-outputs}"
 export OUTPUT_TAG=cached-100
 
 bash "$SCRIPTS/mvtracker_cached.sh" "$DATASETS" "$POSE_FILE" "${DEPTH_TYPES:-duster gt}"

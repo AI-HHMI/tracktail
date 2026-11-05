@@ -7,16 +7,14 @@ Writes per-frame depth files alongside the scene data:
     <scene_root>/duster-views-{i}-{j}-.../{frame:05d}__scene.npz
 
 Camera subsets use default_rng(view_seed).choice(total, n_views, replace=False)
-so that precompute and mvtracker_inference_native.py always agree on the same subset.
+so that precompute and inference (mvtracker_inference_native_official.py) agree on the same subset.
 
-Usage:
-    cd ~
-    export PYTHONPATH="/home/ruppk2@hhmi.org/software/mvtracker:/home/ruppk2@hhmi.org/software/dust3r:$PYTHONPATH"
-    /home/ruppk2@hhmi.org/miniforge3/envs/mvtracker/bin/python \\
-        /home/ruppk2@hhmi.org/posetail/mvtracker_baseline/precompute_dust3r_native.py \\
+Usage (paths from paper.env; precompute_dust3r_native.sh sets this up):
+    export PYTHONPATH="$MVTRACKER_REPO:$DUST3R_REPO:$PYTHONPATH"
+    $DUST3R_PYTHON mvtracker_baseline/precompute_dust3r_native.py \\
         --dataset-type kubric \\
-        --data-root /groups/karashchuk/karashchuklab/mvtracker-datasets \\
-        --checkpoint /groups/karashchuk/karashchuklab/mvtracker-datasets/checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth \\
+        --data-root $MVTRACKER_DATA \\
+        --checkpoint $DUST3R_CKPT \\
         --device cuda:0 \\
         --n-views 4 \\
         --view-seed 0
@@ -317,7 +315,7 @@ def parse_args():
     p.add_argument("--n-views", type=int, default=None,
                    help="Use N randomly-selected views; None = all views")
     p.add_argument("--view-seed", type=int, default=0,
-                   help="RNG seed for view subsampling (must match mvtracker_inference_native.py seed)")
+                   help="RNG seed for view subsampling (must match the inference --view-seed)")
     p.add_argument("--views", type=int, nargs="+", default=None,
                    help="Explicit view indices to use; overrides --n-views and --view-seed")
     p.add_argument("--mvtracker-canonical", action="store_true",

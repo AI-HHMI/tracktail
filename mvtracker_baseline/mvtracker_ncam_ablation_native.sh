@@ -8,14 +8,17 @@
 # normalization, 256x256 input, and the paper-protocol metrics (mvtracker_metrics.py).
 #
 # Unlike CoTracker, the DUSt3R depths depend on which cameras are used together, so they are precomputed per N (skipped
-# when the folder exists) in the native dataset and linked into the posetail trial dirs. DUSt3R needs at least 2 views:
+# when the folder exists) in the native dataset ($MVTRACKER_DATA) and linked into the trial dirs. DUSt3R needs at least 2 views:
 # for N = 1 the depth of view_00 is reconstructed from the pair view_00 + view_01 and only view_00 is given to MVTracker.
 #
 # Usage:
 #   bash mvtracker_ncam_ablation_native.sh [N ...]      default: 1 2 3 4 5 6 7 8
 #
-# Results: $ABLATION_ROOT/nviews-N/, and ncam_ablation_summary.csv over all N at the end.
-# Env overrides: ABLATION_ROOT, DEVICE (default cuda:0), PYTHON (default: the mvtracker-official venv).
+# Results: $ABLATION_ROOT/nviews-N/, and ncam_ablation_summary.csv over all N at the end
+#   (default ABLATION_ROOT = $MVTRACKER_OUT_BASE/ncam-ablation-dexycb).
+# Paths come from paper.env (TRACKTAIL_DATA, MVTRACKER_DATA, MVTRACKER_REPO, DUST3R_REPO, MVT_HUB_DIR, MVTRACKER_CKPT,
+# DUST3R_CKPT, MVTRACKER_PYTHON, DUST3R_PYTHON).
+# Env overrides: ABLATION_ROOT, DATASET_ROOT, DEVICE (default cuda:0), PYTHON (default $MVTRACKER_PYTHON).
 
 set -e
 
@@ -23,19 +26,20 @@ NS=${*:-"1 2 3 4 5 6 7 8"}
 DEVICE=${DEVICE:-cuda:0}
 
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$SCRIPTS/.."
-export PYTHONPATH="/home/ruppk2@hhmi.org/software/mvtracker:/groups/karashchuk/home/ruppk2/github/dust3r:$REPO:$PYTHONPATH"
-export TORCH_HOME=/groups/karashchuk/home/ruppk2/.cache/torch
+REPO="$(cd "$SCRIPTS/.." && pwd)"
+source "$REPO/scripts/paper_common.sh"
+BASELINE_LD=${LD_LIBRARY_PATH:-}   # LD_LIBRARY_PATH without the pixi libs of paper_common.sh (those are for the pixi python)
+while [[ "$BASELINE_LD" == "$PAPER_REPO/.pixi/envs/default/lib:"* ]]; do BASELINE_LD=${BASELINE_LD#"$PAPER_REPO/.pixi/envs/default/lib:"}; done
+export PYTHONPATH="$MVTRACKER_REPO:$DUST3R_REPO:$REPO${PYTHONPATH:+:$PYTHONPATH}"
+export MVT_HUB_DIR                        # torch.hub loads the pinned clone (paper.env)
 
-PYTHON="${PYTHON:-/home/ruppk2@hhmi.org/envs/mvtracker-official/bin/python}"
-DUST3R_PYTHON=/home/ruppk2@hhmi.org/miniforge3/envs/mvtracker/bin/python      # as in precompute_dust3r_native.sh
-DUST3R_PATH=/home/ruppk2@hhmi.org/software/dust3r
-DATA_ROOT=/groups/karashchuk/karashchuklab/mvtracker-datasets
+PYTHON=${PYTHON:-env LD_LIBRARY_PATH=$BASELINE_LD $MVTRACKER_PYTHON}
+DATA_ROOT=${MVTRACKER_DATA:?set MVTRACKER_DATA (paper.env)}
 NATIVE_ROOT=$DATA_ROOT/dex-ycb-multiview
-DATASET_ROOT=/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6
-CKPT_DUSTER=$DATA_ROOT/checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth
-CKPT_MVTRACKER=$DATA_ROOT/checkpoints/mvtracker_200000_june2025.pth
-ABLATION_ROOT=${ABLATION_ROOT:-/groups/karashchuk/home/ruppk2/results/paper-final-v2/mvtracker-outputs/ncam-ablation-dexycb}
+DATASET_ROOT=${DATASET_ROOT:-$TRACKTAIL_DATA}
+CKPT_DUSTER=$DUST3R_CKPT
+CKPT_MVTRACKER=$MVTRACKER_CKPT
+ABLATION_ROOT=${ABLATION_ROOT:-$MVTRACKER_OUT_BASE/ncam-ablation-dexycb}
 
 for N in $NS; do
     OUT_ROOT="${ABLATION_ROOT}/nviews-${N}"
@@ -48,14 +52,14 @@ for N in $NS; do
     echo "=== n_views=${N} (${CAMS}), depth ${DEPTH_SUBDIR} ==="
 
     echo "-- DUSt3R precompute (skips if already done) --"
-    PYTHONPATH="/home/ruppk2@hhmi.org/software/mvtracker:$DUST3R_PATH:$PYTHONPATH" $DUST3R_PYTHON "$SCRIPTS/precompute_dust3r_native.py" \
+    env LD_LIBRARY_PATH="$BASELINE_LD" $DUST3R_PYTHON "$SCRIPTS/precompute_dust3r_native.py" \
         --dataset-type dex-ycb-multiview \
         --data-root  "$DATA_ROOT" \
         --checkpoint "$CKPT_DUSTER" \
         --device "$DEVICE" \
         --views $DUST_VIEWS
 
-    echo "-- linking the depths into the posetail trial dirs --"
+    echo "-- linking the depths into the trial dirs --"
     for SESSION_DIR in "$DATASET_ROOT/dex_ycb/test"/*/; do
         SESSION=$(basename "$SESSION_DIR")
         src="$NATIVE_ROOT/$SESSION/$DEPTH_SUBDIR"
@@ -93,10 +97,10 @@ for N in $NS; do
         --force
 
     echo "-- Combining metrics --"
-    $PYTHON "$REPO/scripts/combine_metrics.py" --prefix "$OUT_ROOT"
+    (cd "$REPO" && $PIXI_PYTHON scripts/combine_metrics.py --prefix "$OUT_ROOT")
 done
 
 # ── Combine per-nviews summaries into a single CSV ───────────────────────────
 echo ""
 echo "=== Combining all n_views ==="
-$PYTHON "$REPO/cotracker_baseline/combine_ncam_ablation.py" "$ABLATION_ROOT"
+$PIXI_PYTHON "$REPO/cotracker_baseline/combine_ncam_ablation.py" "$ABLATION_ROOT"

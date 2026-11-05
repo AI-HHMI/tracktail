@@ -1,5 +1,5 @@
 """
-Precompute DUSt3R depth maps for all trials in a posetail dataset split.
+Precompute DUSt3R depth maps for all trials in a dataset split ($TRACKTAIL_DATA layout).
 
 Reads:
     <dataset_root>/<dataset>/<split>/<session>/<trial>/metadata.yaml
@@ -12,19 +12,16 @@ Writes per-frame depth files:
 This is the preprocessing step that mvtracker_inference.py --depth-source precomputed
 expects.  Run it once before inference; it skips frames whose .npz already exists.
 
-Requirements:
-    export PYTHONPATH="/home/ruppk2@hhmi.org/software/dust3r:$PYTHONPATH"
-    export PYTHONPATH="/home/ruppk2@hhmi.org/software/mvtracker:$PYTHONPATH"
+Requirements (paths from paper.env; precompute_dust3r_point_odyssey.sh sets this up):
+    export PYTHONPATH="$DUST3R_REPO:$MVTRACKER_REPO:<this repo>:$PYTHONPATH"
 
 Example:
-    cd ~
-    /home/ruppk2@hhmi.org/miniforge3/envs/mvtracker/bin/python \\
-        /home/ruppk2@hhmi.org/posetail/cotracker_baseline/precompute_dust3r_depths.py \\
-        --dataset-root /groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v5 \\
-        --depth-root   /groups/karashchuk/karashchuklab/mvtracker-datasets/dust3r-depths-posetail \\
-        --datasets cmupanoptic_3dgs \\
+    $DUST3R_PYTHON mvtracker_baseline/precompute_dust3r_depths.py \\
+        --dataset-root $TRACKTAIL_DATA \\
+        --depth-root   $TRACKTAIL_DATA \\
+        --datasets point-odyssey-human \\
         --split test \\
-        --checkpoint /groups/karashchuk/karashchuklab/mvtracker-datasets/checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth \\
+        --checkpoint $DUST3R_CKPT \\
         --device cuda:0
 """
 
@@ -47,7 +44,7 @@ from dust3r.model import AsymmetricCroCo3DStereo
 from dust3r.utils.device import to_numpy
 from dust3r.utils.image import load_images
 
-from posetail.datasets.utils import get_dirs
+from tracktail.datasets.utils import get_dirs
 
 
 def load_camera_params(metadata_path):

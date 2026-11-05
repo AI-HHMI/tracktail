@@ -5,16 +5,16 @@
 # Native structure:   <dataset>/test/<trial>/mvtracker_3d.npz
 # PO structure:       <dataset>/<trial>.npz
 #
-# Renders go to $RENDER_ROOT (default /home/ruppk2@hhmi.org/renders-v2) so the earlier renders are kept. Frames before a
+# Renders go to $RENDER_ROOT (default $TRACKTAIL_RESULTS/renders) so the earlier renders are kept. Frames before a
 # track's query frame are hidden (render_video.py).
 #
 # Usage:
 #   bash mvtracker_render.sh <output-dir> [dataset ...]
 #
 # Examples:
-#   bash mvtracker_render.sh /groups/karashchuk/home/ruppk2/results/paper/mvtracker-outputs/native-4cams-duster
-#   bash mvtracker_render.sh /groups/karashchuk/home/ruppk2/results/paper/mvtracker-outputs/native-4cams-duster dex-ycb-multiview
-#   bash mvtracker_render.sh /groups/karashchuk/home/ruppk2/results/paper/mvtracker-outputs/point-odyssey-human-4cams-gt
+#   bash mvtracker_render.sh $MVTRACKER_OUT_BASE/paper-canonical-cached-100-duster
+#   bash mvtracker_render.sh $MVTRACKER_OUT_BASE/paper-canonical-cached-100-duster dex_ycb
+#   bash mvtracker_render.sh $MVTRACKER_OUT_BASE/paper-po-4cams-gt_0.5
 
 set -e
 
@@ -23,11 +23,12 @@ shift
 DATASETS=("${@:-*}")
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export PYTHONPATH="/home/ruppk2@hhmi.org/software/mvtracker:$REPO:$PYTHONPATH"
+source "$REPO/scripts/paper_common.sh"
+export PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}"
 
-if [[ -x "$REPO/.pixi/envs/default/bin/python" ]]; then PYTHON="$REPO/.pixi/envs/default/bin/python"; else PYTHON=/groups/karashchuk/home/ruppk2/miniforge3/envs/mvtracker/bin/python; fi
+PYTHON=$PIXI_PYTHON
 SCRIPT="$REPO/scripts/render_video.py"
-RENDER_ROOT=${RENDER_ROOT:-/home/ruppk2@hhmi.org/renders-v2}
+RENDER_ROOT=${RENDER_ROOT:-$TRACKTAIL_RESULTS/renders}
 RENDER_BASE=$RENDER_ROOT/mvtracker-renders/$(basename "$OUTPUT_DIR")
 
 shopt -s globstar nullglob

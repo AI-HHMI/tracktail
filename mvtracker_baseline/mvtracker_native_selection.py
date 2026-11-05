@@ -2,8 +2,10 @@
 (kubric-multiview, dex-ycb-multiview, panoptic-multiview), following MVTracker's own dataloaders
 (mvtracker/datasets/{kubric_multiview,dexycb_multiview,panoptic_studio_multiview}_dataset.py).
 
-Used by mvtracker_inference_native.py, mvtracker_inference_native_official.py and
-mvtracker_metrics_native.py so inference, query selection and scoring all see the same labels.
+Used by mvtracker_inference_native_official.py (its native loaders, also imported by mvtracker_inference.py for
+--depth-type gt-native). The paper's tracks and queries are MVTracker's cached tracks converted to
+pose3d_cached.npz (scripts/make_pose3d_cached.py); the selection code here is only used by the legacy standalone
+native runner.
 
 Track selection by default uses MVTracker's own cached track files (<trial>/cache/cachedtracks--*.npz,
 shipped with the released datasets) so the evaluated tracks and query frames are exactly the paper's.
