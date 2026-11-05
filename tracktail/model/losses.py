@@ -326,7 +326,7 @@ class TotalLoss(nn.Module):
 
         Both weights below are live, settable constructor arguments that simply never fire with a
         TrackerEncoder: `coords_pred_iters` survives there only as a commented-out block and
-        `feature_planes_levels` is emitted by the OTHER model class (tracker.py) alone. Without
+        `feature_planes_levels` was emitted only by an older, since removed model class. Without
         this a user sets feature_loss_weight=0.5, sees no error, watches the loss go down, and
         concludes the term is doing something.
         """
