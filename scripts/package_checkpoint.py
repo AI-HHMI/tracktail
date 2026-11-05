@@ -9,7 +9,7 @@ Run through the project environment, for example:
 
     pixi run python scripts/package_checkpoint.py \
         --run-dir /path/to/wandb/run-20260727_113457-ukt14i7c \
-        --output /path/to/posetail-models/posetail-static-animal/model.pth
+        --output /path/to/tracktail-models/tracktail-static-animal/model.pth
 """
 
 from __future__ import annotations

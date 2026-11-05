@@ -20,7 +20,7 @@
 #   NETWORKS="all" bash scripts/tracktail_cached.sh        every paper network (main + pretrain + 8 ablations)
 #
 # Results: $TRACKTAIL_OUT_BASE/<network>_canonical_cached/
-#   (default $TRACKTAIL_RESULTS/posetail-outputs-vis0.1-occunknown/main_finetune_vzkjqrys_canonical_cached).
+#   (default $TRACKTAIL_RESULTS/tracktail-outputs/main_finetune_vzkjqrys_canonical_cached).
 # Paper protocol: QUERY_OCC=unknown (default; no GT visibility at the query frame), VIS_THRESH=0.1 (default).
 # Env overrides: NETWORKS, TRACKTAIL_OUT_BASE, POSE_FILE (default pose3d_cached.npz), DEVICE (default cuda:0),
 #   QUERY_OCC, VIS_THRESH.

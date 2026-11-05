@@ -99,8 +99,6 @@ The Point Odyssey test trials ship `pose3d.npz` = the 512-track speed-stratified
 **Other evaluation datasets** (download from the original source, then convert with
 [tracktail-preprocessing](https://github.com/AI-HHMI/tracktail-preprocessing), tag `v1.0-paper`):
 
-| Dataset dir | Source | Used for |
-|---|---|---|
 | Dataset dir | Raw data | Used for |
 |---|---|---|
 | `dex_ycb` | MVTracker's [`dex-ycb-multiview.tar.gz`](https://huggingface.co/datasets/ethz-vlg/mv3dpt-datasets/resolve/main/dex-ycb-multiview.tar.gz) | Tab. main_results, Fig. ncams |
@@ -159,10 +157,11 @@ released. Retrain them with their configs (below), or use the committed result s
 
 `scripts/eval_testset_metrics.py`, `scripts/tracktail_tapvid3d_official.py` and `benchmark_speed/bench.py` take
 `--hf-repo REPO --revision REV` (default: the paper model), `--checkpoint model.pth`, or `--wandb-folder RUN_DIR`.
-The shell drivers take a network name (`NETWORKS=...`, list in `scripts/paper_common.sh`): the paper model loads
-from Hugging Face, any other network from `$TRACKTAIL_MODELS/<network>/model.pth` (made with
-`scripts/package_checkpoint.py --run-dir <run> --output ...`) or from `$TRACKTAIL_MODELS/<network>` linked to its
-W&B run dir.
+The shell drivers take a network name (`NETWORKS=...`, list in `scripts/paper_common.sh`) and look for its model
+in this order: the original W&B run under `$TRACKTAIL_WANDB_BASE` (if set); `$TRACKTAIL_MODELS/<network>/model.pth`;
+`$TRACKTAIL_MODELS/<network>` as a W&B run dir; and, for the paper model only, Hugging Face. To package one of your
+runs: `pixi run python scripts/package_checkpoint.py --run-dir <run> --checkpoint 799996 --output
+$TRACKTAIL_MODELS/<network>/model.pth` (pretrain and ablations were evaluated at checkpoint 799996).
 
 Parameter count (`pixi run python scripts/count_params.py`): 350.5M = 307.8M scene encoder (V-JEPA 2.1 ViT-L
 304.7M + 2.1M projection) + 6.4M query encoder + 36.3M decoder.
@@ -239,7 +238,8 @@ bash arrow_baseline/arrow_cached_po.sh                             # 24-frame wi
 ```
 
 The MVTracker GT-depth rows need the PO GT depth maps (`preprocess_gt_depths_point_odyssey.py`), which need the
-raw Point Odyssey depth renders. <!-- TODO: say whether gt-depths ship with the data release -->
+raw Point Odyssey depth renders. These are not part of the data release so far, so those rows can only be checked
+against the shipped result summaries (tracktail-paper `data/`).
 
 **Ablation tables** (camera/temporal attention, encoder size, latent size; pretrain-stage models): these models are
 not released. Train them (`configs/paper/pretrain.toml`, `ablation_*.toml`), put them under `$TRACKTAIL_MODELS`
@@ -276,15 +276,16 @@ The ARROW and other baseline rows are copied from the ARROW paper.
 **Fig. qualitative**: 100-track runs, then renders.
 
 ```bash
-bash scripts/tracktail_100.sh
+QUERY_OCC=gt bash scripts/tracktail_100.sh
 bash mvtracker_baseline/mvtracker_100.sh
 bash cotracker_baseline/cotracker_100.sh
 bash arrow_baseline/arrow_100.sh
 bash scripts/render_qualitative_gtvis.sh
 ```
 
-The paper's Tracktail renders came from an earlier 100-track run with ground-truth visibility at the query
-frame; `QUERY_OCC=gt bash scripts/tracktail_100.sh` matches it.
+The paper's Tracktail renders came from a 100-track run with ground-truth visibility at the query frame. Run
+`QUERY_OCC=gt bash scripts/tracktail_100.sh` (output folder `..._cached_100_occgt`, which
+`render_qualitative_gtvis.sh` reads) to match it.
 
 **Fig. speed / speed_tracktail**: `bash benchmark_speed/run_all.sh` (all methods on one GPU; the paper used an
 A100-SXM4-80GB). The paper's raw results are in `benchmark_speed/results/a100_mvtracker_20261026_133500/`.

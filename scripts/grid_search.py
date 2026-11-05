@@ -40,7 +40,7 @@ PARAM_DICT = {'model.hiera_requires_grad': [True, True, True, False, False, Fals
 
 # # FOR TESTING 
 # PARAM_DICT = {'training.n_iterations': [25], 
-#               'wandb.project_name': ['posetail-test']}
+#               'wandb.project_name': ['tracktail-test']}
 
 def parse_args(): 
     '''

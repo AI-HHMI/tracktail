@@ -11,7 +11,7 @@
 #   (scripts/eval_ncam_ablation.sh submits one LSF job per N instead)
 #
 # Results: $OUT_BASE/nviews-N/, and ncam_ablation_summary.csv over all N at the end
-#   (default OUT_BASE=$TRACKTAIL_RESULTS/posetail-outputs-vis0.1-occunknown/ncam_ablation_dexycb).
+#   (default OUT_BASE=$TRACKTAIL_RESULTS/tracktail-outputs/ncam_ablation_dexycb).
 # Paper protocol: QUERY_OCC=unknown (default), VIS_THRESH=0.1 (default).
 # Env overrides: OUT_BASE, NETWORK, DEVICE (default cuda:0), QUERY_OCC, VIS_THRESH.
 

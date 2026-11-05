@@ -5,7 +5,7 @@ invocation, so evaluating datasets in separate runs leaves a partial report. Eac
 folder keeps its own metrics.json ({'summary': ..., 'per_trial': ...}), so the full report
 can be regenerated without re-running inference or touching the model.
 
-Usage (run with the posetail env, e.g. via pixi):
+Usage (run with this repo's pixi env):
     python scripts/merge_eval_summaries.py RUN_DIR [--datasets ds1 ds2 ...] [--out OUT_DIR]
 
 By default every subfolder of RUN_DIR with a metrics.json is merged and the report is written

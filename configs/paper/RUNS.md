@@ -61,7 +61,7 @@ pixi run python train.py --config-path configs/paper/finetune.toml --devices -1 
 ```
 
 To evaluate your models with the paper drivers, package each run
-(`pixi run python scripts/package_checkpoint.py --run-dir <run> --output $TRACKTAIL_MODELS/<network>/model.pth`,
+(`pixi run python scripts/package_checkpoint.py --run-dir <run> --checkpoint 799996 --output $TRACKTAIL_MODELS/<network>/model.pth`,
 network names in `scripts/paper_common.sh`) or symlink `$TRACKTAIL_MODELS/<network>` to the run dir.
 
 ## Learning rate and GPU count

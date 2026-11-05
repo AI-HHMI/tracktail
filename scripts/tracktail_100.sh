@@ -33,7 +33,7 @@ NETWORK=${NETWORK:-main_finetune_vzkjqrys}
 MODEL_ARGS=$(model_args "$NETWORK")
 QUERY_OCC=${QUERY_OCC:-unknown}
 VIS_THRESH=${VIS_THRESH:-0.1}
-OUT=${OUT:-$TRACKTAIL_OUT_BASE/${NETWORK}_${NCAMS_LABEL}_cached_100}
+OUT=${OUT:-$TRACKTAIL_OUT_BASE/${NETWORK}_${NCAMS_LABEL}_cached_100$([[ "$QUERY_OCC" == gt ]] && echo _occgt)}   # _occgt: GT visibility at the query frame (the paper's qualitative figure)
 
 declare -A CANONICAL_CAMS=(
     [kubric-multiview]="view_0 view_1 view_2 view_3"

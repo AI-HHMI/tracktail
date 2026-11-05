@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Re-render the trials of the paper's qualitative comparison (tracktail-paper/format_arrow.ipynb) for every method,
+# Re-render the trials of the paper's qualitative comparison (tracktail-paper/figure_qualitative.ipynb) for every method,
 # hiding points only where the ground truth is occluded (render_video.py --gt-visibility), so all columns show the
 # same points at every frame. The tracks are colored by their order in the figure's camera at a figure frame
-# (render_video.py --color-order-view/-frame/-axis), with the same colors in every column. The predictions are the ones of the
-# existing renders (their render_info.json).
+# (render_video.py --color-order-view/-frame/-axis), with the same colors in every column.
 #
 # Renders go to $RENDER_ROOT/gtvis-renders/<method>/<dataset>/<trial>/ (default RENDER_ROOT $TRACKTAIL_RESULTS/renders).
 # Inputs: the *_100 runs of every method (tracktail_100.sh, cotracker_100.sh, mvtracker_100.sh, arrow_100.sh) under the
-# results trees of scripts/paper_common.sh.
+# results trees of scripts/paper_common.sh. Tracktail: the QUERY_OCC=gt run (folder ..._cached_100_occgt), as used for
+# the paper figure; set TRACKTAIL_100 to use another run.
 #
 # Usage: bash scripts/render_qualitative_gtvis.sh
 
@@ -20,7 +20,7 @@ PYTHON=$PIXI_PYTHON
 RENDER_ROOT=${RENDER_ROOT:-$TRACKTAIL_RESULTS/renders}
 OUT=$RENDER_ROOT/gtvis-renders
 
-TRACKTAIL_100=${TRACKTAIL_100:-$TRACKTAIL_OUT_BASE/main_finetune_vzkjqrys_canonical_cached_100}
+TRACKTAIL_100=${TRACKTAIL_100:-$TRACKTAIL_OUT_BASE/main_finetune_vzkjqrys_canonical_cached_100_occgt}
 ARROW=$ARROW_OUT_BASE/paper-canonicalcams-cached-100
 
 render() {   # method dataset trial npz [extra args]
