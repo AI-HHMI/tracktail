@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Estimate grid representations for TrackerTapNext's 3D + depth heads.
+"""Estimate grid representations for the 3D + depth grid heads (output_mode grid / gridresid).
 
 The grid heads bin each coordinate into ``head_grid_size`` bins. This probe
 replays the EXACT loss-side target math (``losses.py`` grid CE) on the real
@@ -18,7 +18,7 @@ For each it answers three questions:
      the log-depth distribution, or could it be tightened (wasted end bins)?
 
 ``rays_c`` is the world->ray-local SE3 at the image centre (``points_to_rays``,
-``normalize_t=False``), identical to ``tracker_tapnext.py``'s direct-lift block.
+``normalize_t=False``), the same ray-local frame as the model's grid decode.
 The residual anchor is the window's first frame; motion is measured forward over
 the window (causal tracking). Image-free, bounded file-walk (reuses
 ``estimate_scale_stats`` helpers) — fast even on kubric.

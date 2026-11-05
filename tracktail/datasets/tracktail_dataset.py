@@ -639,10 +639,9 @@ class TracktailDataset(Dataset):
         self.enable_kpt_filtering = config.dataset[split].get('enable_kpt_filtering', False)
         self.query_anytime = config.dataset[split].get('query_anytime', False)
         self.query_edge_bias = config.dataset[split].get('query_edge_bias', 3.0)
-        # Causal masking (for the causal TAPNext tracker): NaN the trajectory
-        # target for frames before each point's query time so pre-query frames
-        # are excluded from the loss via the existing isfinite mask. Default off
-        # keeps TrackerEncoder behavior identical.
+        # Causal masking: NaN the trajectory target for frames before each point's
+        # query time so pre-query frames are excluded from the loss via the existing
+        # isfinite mask. Default off.
         self.causal_masking = config.dataset[split].get('causal_masking', False)
         self.no_nan_coords = config.dataset[split].get('no_nan_coords', True)
         # When no_nan_coords is off, keep partially-missing tracks but drop points
