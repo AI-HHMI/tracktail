@@ -177,12 +177,10 @@ trial/
 | Repo | Trained on | Clip / res | Release |
 |---|---|---|---|
 | `ai-hhmi/tracktail-static-animal` (server default) | `tracktail-static`, further finetuned on animal datasets | 24 frames / 256 px | `2026-10-12` |
-| `ai-hhmi/tracktail-static` | The paper model: pretrained and finetuned on Multi-view Kubric + Multi-view Point Odyssey (human, animal) | 24 frames / 256 px | `2026-10-12` |
+| `ai-hhmi/tracktail-static` | The paper model: trained on Multi-view Kubric + Multi-view Point Odyssey (human, animal) | 24 frames / 256 px | `2026-10-12` |
 
 "static" means static (calibrated, non-moving) cameras. Use `tracktail-static-animal` for animal
 recordings; use `tracktail-static` for general scenes and to compare with the paper's numbers.
-The paper's pretrained and ablation models are not released; their training configs are on the
-`paper` branch (`configs/paper/`).
 
 ## Conventions
 - **Extrinsics** are world→camera 4×4 matrices. **Units** can be anything, because the model
@@ -239,7 +237,7 @@ pixi run python scripts/inference_video.py --help     # windowed inference over 
   `[dataset.train]` in the config.
 
 ### Configs
-- Pretrain and finetune of `tracktail-static` (the paper model): `configs/paper/{pretrain,finetune}.toml`
+- Training configs of `tracktail-static` (the paper model): `configs/paper/`
   on the [`paper` branch](https://github.com/AI-HHMI/tracktail/tree/paper), with run details in
   `configs/paper/RUNS.md`.
 - Animal finetune of `tracktail-static-animal`: `configs/config_tracktail_finetuning_v6.toml`.
