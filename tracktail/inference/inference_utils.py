@@ -627,7 +627,7 @@ def load_model_from_base_folder(base_folder, checkpoint=None, device=None):
     return model, config, config_path, checkpoint_path
 
 
-def load_model_from_hub(repo_id, device=None, revision=None, cache_dir=None):
+def load_model_from_hub(repo_id, device=None, revision=None, cache_dir=None, subfolder=None):
     """Load a packaged TrackerEncoder from the Hugging Face Hub.
 
     Returns ``(model, config)`` where ``config.model`` contains the embedded model
@@ -639,12 +639,14 @@ def load_model_from_hub(repo_id, device=None, revision=None, cache_dir=None):
         device: Device for the model. Defaults to CUDA when available.
         revision: Hub branch, commit, or date tag such as ``2026-10-12``.
         cache_dir: Optional Hugging Face cache directory.
+        subfolder: Optional folder inside the repo holding ``model.pth``.
     """
     model = TrackerEncoder.from_pretrained(
         repo_id,
         revision=revision,
         device=device,
         cache_dir=cache_dir,
+        subfolder=subfolder,
     )
     config = EasyDict({"model": model._pretrained_model_config})
     return model, config

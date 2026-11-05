@@ -37,7 +37,7 @@ _N_AXIS = {k: v + 1 for k, v in _T_AXIS.items()}
 class TrackerEncoder(nn.Module):
 
     @classmethod
-    def from_pretrained(cls, repo_id, revision=None, device=None, cache_dir=None):
+    def from_pretrained(cls, repo_id, revision=None, device=None, cache_dir=None, subfolder=None):
         """Load a packaged TrackerEncoder checkpoint from the Hugging Face Hub.
 
         The packaged checkpoint contains the inference weights under ``model_state`` and
@@ -49,6 +49,8 @@ class TrackerEncoder(nn.Module):
             revision: Hub revision to download. Defaults to the repository's default branch.
             device: Device for the model and checkpoint. Defaults to CUDA when available.
             cache_dir: Optional Hugging Face cache directory.
+            subfolder: Optional folder inside the repository holding ``model.pth``, e.g.
+                ``"pretrain"`` for ``ai-hhmi/tracktail-paper-checkpoints``.
 
         Returns:
             A ``TrackerEncoder`` in evaluation mode on ``device``.
@@ -63,6 +65,7 @@ class TrackerEncoder(nn.Module):
         checkpoint_path = hf_hub_download(
             repo_id=repo_id,
             filename='model.pth',
+            subfolder=subfolder or None,
             revision=revision,
             cache_dir=cache_dir,
         )
@@ -102,6 +105,7 @@ class TrackerEncoder(nn.Module):
         model._pretrained_model_config = model_config
         model._pretrained_repo_id = repo_id
         model._pretrained_revision = revision
+        model._pretrained_subfolder = subfolder
         model.eval()
         return model
 
