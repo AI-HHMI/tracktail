@@ -189,12 +189,13 @@ pixi-py/*
 
 # local scratch / working dirs
 logs/
-tests/
-scripts/*
-!scripts/package_checkpoint.py
 notebooks/
 reports/
 setup_env_vars.sh
+# test artifacts
+tests/fixtures/
+tests/golden/
+tests/new*/
 
 plans/
 dev/
