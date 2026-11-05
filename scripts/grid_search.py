@@ -12,8 +12,8 @@ from easydict import EasyDict
 ''' 
 example script submission. only use the auto-submit flag to submit each job to a slurm cluster
 
-python grid_search.py --config-path configs/archive/config_default_3d.toml
-python grid_search.py --config-path configs/archive/config_default_3d.toml --auto-submit
+python grid_search.py --config-path configs/paper/pretrain.toml
+python grid_search.py --config-path configs/paper/pretrain.toml --auto-submit
 '''
 
 # list of parameter combinations to test - each must be the same length
