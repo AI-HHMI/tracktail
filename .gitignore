@@ -189,14 +189,24 @@ pixi-py/*
 
 # local scratch / working dirs
 logs/
-tests/
-scripts/*
-!scripts/package_checkpoint.py
 notebooks/
 reports/
 setup_env_vars.sh
+paper.local.env
+external/
+checkpoints/
+/results/
+# test artifacts (large fixtures / golden outputs stay local)
+tests/fixtures/
+tests/golden/
+tests/new*/
+# benchmark scratch runs (only the paper's results dir is tracked)
+benchmark_speed/results/*
+!benchmark_speed/results/a100_mvtracker_20261026_133500/
+benchmark_speed/results/a100_mvtracker_20261026_133500/lsf/
 
 plans/
 dev/
 scratch/
 .pi
+!scripts/cover/
