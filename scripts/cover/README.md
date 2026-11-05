@@ -37,15 +37,16 @@ pixi run python -m pip install --no-deps --target deps_cover \
 
 You need one Rat7M trial in the Tracktail trial layout (`metadata.yaml` with the calibration, plus `vid/<camera>.mp4`).
 Download Rat7M from the source ([Dunn et al. 2021](https://doi.org/10.6084/m9.figshare.c.5295370)).
-Convert it with `datasets/rat7m.py` from [tracktail-preprocessing](https://github.com/AI-HHMI/tracktail-preprocessing).
-Subject s5 is the test split, so the trial is at `<rat7m_out>/test/s5-d1/101500`.
+Convert it with [tracktail-preprocessing](https://github.com/AI-HHMI/tracktail-preprocessing) (tag `v1.0-paper`):
+`pixi run python generate_processed_dataset.py --dataset rat7m --in RAW/rat7m --out <data> --seed 3`.
+Subject s5 is the test split, so the trial is at `<data>/rat7m/test/s5-d1/101500`.
 
 ## Commands
 
-Run from the repo root. Replace `<rat7m_out>` with the converter output dir.
+Run from the repo root. Replace `<data>` with the converter output dir.
 
 ```bash
-TRIAL=<rat7m_out>/test/s5-d1/101500
+TRIAL=<data>/rat7m/test/s5-d1/101500
 OUT=out/cover_rat7m
 
 # 1-3. cloud -> track -> all panels  (writes $OUT/cloud.npz, $OUT/track.npz, $OUT/cover_*.{png,pdf})
@@ -66,5 +67,6 @@ Later stages read `cloud.npz` and `track.npz` from `--out-dir`.
 - `$OUT/cloud.npz`: read by `tracktail-paper/figure_rat7m.ipynb` (`cloud_path`, code cell 4),
   which draws `rat7m_camera_views_cloud.pdf`.
 - The other `figure_rat7m.ipynb` panels (`rat7m_examples.pdf` and the `rat7m_with_tracks*.pdf` views) read the trial
-  videos and a separate Tracktail prediction file (`output.npz`), not the outputs of this pipeline.
+  videos and a separate Tracktail prediction file, committed in tracktail-paper as `data/rat7m/tracktail_output.npz`.
+  They are not part of the cover and this pipeline does not make them.
 - The final cover (`figures/cover_figure_draft_liliedit2.pdf` in the paper source) was assembled by hand from these panels in a vector editor.
