@@ -1,12 +1,8 @@
 # Tracktail
 
-<!-- OUTLINE DRAFT — sections marked TODO still need content. Python package / PyPI name: `tracktail`. -->
-
 **Multi-view 3D point tracking without depth input.** You give Tracktail synchronized videos from
 calibrated cameras and a set of 3D query points. It returns each point's 3D trajectory and
 visibility over time.
-
-<!-- TODO: teaser figure (paper Fig. 1) + link to paper / project page -->
 
 To reproduce the paper, use the [`paper` branch](https://github.com/AI-HHMI/tracktail/tree/paper) (configs, drivers,
 baselines), [tracktail-paper](https://github.com/AI-HHMI/tracktail-paper) (tables and figures) and
@@ -37,7 +33,7 @@ baselines), [tracktail-paper](https://github.com/AI-HHMI/tracktail-paper) (table
 ## Installation
 
 ```bash
-git clone git@github.com:AI-HHMI/tracktail.git
+git clone https://github.com/AI-HHMI/tracktail.git
 cd tracktail
 pixi install            # Python 3.11, CUDA 12.8 PyTorch, all deps
 pixi shell              # or prefix commands with `pixi run`
@@ -138,7 +134,9 @@ Validation errors return `400` with JSON `{"detail": "..."}`. Training-only outp
 
 ### `POST /score` (optional)
 Takes a full trajectory `coords` (T,K,3) plus the same cameras and images. Returns `scores` and
-`precision` from the track-quality scorer. <!-- TODO: describe what the score means -->
+`precision` from the track-quality scorer: for each track, a quality score for the whole trajectory
+given the videos (the scorer reads the full trajectory and pools over frames and cameras) and the
+precision (confidence) of that score. Use it to rank or filter tracks.
 
 ## Python API
 
@@ -160,7 +158,13 @@ run_inference(model, None, None, trial_path="trial/", n_frames=1000, outpath="ou
 ```
 
 `run_tracker_encoder_on_videos` takes care of windowing, re-anchoring queries between windows,
-and a crop that follows the subject. <!-- TODO: document query_first / motion_margin / max_kpts / n_views -->
+and a crop that follows the subject. Useful arguments:
+- `query_times`: per-point query frame (relative to `start_frame`); each point starts at its own frame.
+- `motion_margin` (default on): widen each window's crop by the previous window's motion so fast
+  subjects stay in view.
+- `max_kpts`: points per forward pass; lower it to save GPU memory.
+- `vis_thresh` (default 0.1): visibility threshold for the occlusion state carried between windows.
+- `run_inference(..., n_views=K, seed=S)` uses K randomly chosen cameras.
 
 **Trial directory layout** (used by `run_inference`, `scripts/inference_video.py`, and
 `example_client.py`):
@@ -171,7 +175,6 @@ trial/
   pose3d.npz      # 'pose' (subjects, T, kpts, 3): query source (and GT if present); optional 'vis'
   vid/<cam>.mp4   # or img/<cam>/*.png
 ```
-<!-- TODO: converter from aniposelib calibration.toml -> metadata.yaml; a way to pass queries without pose3d.npz -->
 
 ## Pretrained models
 | Repo | Trained on | Clip / res | Release |
@@ -225,7 +228,6 @@ pixi run python scripts/inference_video.py --help     # windowed inference over 
   query→scene cross-attention, and an FFN.
 - **Heads:** 3D/2D position, depth, visibility, and 2D/3D confidence. Per-camera predictions are
   fused by confidence.
-<!-- TODO: architecture figure (paper Fig. 3); reconcile layer count / frames / head type with v6 config -->
 
 ### Data
 - Data lives under `<prefix>/<dataset>/<split>/<session>/<trial>/`, with each trial in the same
@@ -242,14 +244,17 @@ pixi run python scripts/inference_video.py --help     # windowed inference over 
   `configs/paper/RUNS.md`.
 - Animal finetune of `tracktail-static-animal`: `configs/config_tracktail_finetuning_v6.toml`.
 - Scorer: `configs/config_scorer.toml`.
-- Other configs in `configs/` are older development configs.
+- `configs/archive/`: older development configs.
 
 Key sections: `[model]`, `[dataset.*]`, `[training]` (optimizer: AdamW, schedule-free, or
 Muon; losses; `checkpoint_path`/`finetune`), and `[wandb]`. Iteration counts are **totals
 across all GPUs**.
 
 ### Launching
+Config values like `${TRACKTAIL_DATA}` are read from the environment when the config is loaded.
+
 ```bash
+export TRACKTAIL_DATA=/path/to/datasets TRACKTAIL_RESULTS=/path/to/results INIT_CKPT=/path/to/checkpoint.pth
 pixi run python train.py --config-path configs/config_tracktail_finetuning_v6.toml \
     --devices -1 --strategy ddp_find_unused_parameters_true      # Lightning Fabric DDP
 # LSF cluster: cluster/big_bsub_{pretraining,finetuning}.sh -> cluster/train_script.sh
@@ -262,7 +267,7 @@ pixi run python train.py --config-path configs/config_tracktail_finetuning_v6.to
 ### Releasing a checkpoint
 `scripts/package_checkpoint.py` strips a run down to the eval weights plus the model config,
 producing `model.pth`. Upload it with `hf upload ai-hhmi/<repo> model.pth` and tag a dated
-revision. <!-- TODO: script the upload -->
+revision (`hf repo tag create ai-hhmi/<repo> <date>`).
 
 ---
 
