@@ -9,7 +9,8 @@
 #   $OUTPUT_BASE/paper-po-4cams   and   $OUTPUT_BASE/paper-po-9cams   (default OUTPUT_BASE = $ARROW_OUT_BASE)
 # The 499 frames are run in windows of WINDOW timesteps (see arrow_inference.py), 24 by default as in the paper.
 # 9 cams x 24 frames needs a large GPU (~A100-80GB or more). The original 9-cam runs used WINDOW=12 (to fit an L4);
-# Tab. po_results' 9-view ARROW numbers are the WINDOW=24 rerun (OUTPUT_BASE=$TRACKTAIL_RESULTS/arrow-outputs-w24).
+# Tab. po_results' 9-view ARROW numbers are the WINDOW=24 rerun, which is what the defaults here produce
+# ($ARROW_OUT_BASE/paper-po-9cams; tracktail-paper reads that folder).
 #
 # Usage:
 #   bash arrow_cached_po.sh [CAMS] [DATASETS] [POSE_FILE]
