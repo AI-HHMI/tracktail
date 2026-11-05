@@ -1058,7 +1058,7 @@ class Decoder(nn.Module):
             _bin_width = 2.0 * head_3d_grid_radius / max(head_3d_grid_size - 1, 1)   # head units/bin
         self.subpixel_bin_width = float(_bin_width)
 
-        # Grid (classification) output modes, mirroring TrackerTapNext:
+        # Grid (classification) output modes:
         #   "grid"      = absolute ray-local position via per-axis marginal soft-argmax.
         #   "gridresid" = the grid head emits a motion residual offset (added to the
         #                 per-track query anchor); depth stays the absolute log grid.
@@ -1242,8 +1242,7 @@ class Decoder(nn.Module):
 
         # Weight init — applied to both mode heads. In grid mode the 3D/2D/depth heads
         # are zero-init so the per-axis softmax starts uniform -> the decoded value is
-        # the grid centre (0 ray-local / image centre / mid log-depth), mirroring
-        # tracker_tapnext.py:194-197.
+        # the grid centre (0 ray-local / image centre / mid log-depth).
         for m in range(2):
             if self.is_grid:
                 for head in [self.heads_3d[m][1], self.heads_2d[m][1], self.heads_depth[m][1]]:
@@ -1296,7 +1295,7 @@ class Decoder(nn.Module):
 
     def _grid_softmax(self, logits, temp=None):
         """Per-axis masked soft-argmax WEIGHTS over the bin grid (threshold 20 bins,
-        temperature 0.5), mirroring tracker_tapnext.py:379-392. ``logits`` (..., K) ->
+        temperature 0.5). ``logits`` (..., K) ->
         normalized probs (..., K). Shared by the decode and the per-bin offset head.
         ``temp`` overrides the softmax temperature (used by the sharpened subpixel path)."""
         soft_argmax_threshold = self.soft_argmax_threshold
@@ -1396,7 +1395,7 @@ class Decoder(nn.Module):
         m = mode_idx.item()
         grid_logits = None
         if self.is_grid:
-            # Per-axis marginal soft-argmax over fixed bins, mirroring TrackerTapNext.
+            # Per-axis marginal soft-argmax over fixed bins.
             # The decoded values carry their own metric magnitude, so the learnable
             # scale_3d/scale_2d/scale_depth are bypassed. Raw bin logits are returned
             # for the cross-entropy supervision in losses.py.

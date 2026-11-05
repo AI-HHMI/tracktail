@@ -265,7 +265,7 @@ class TrackerEncoder(nn.Module):
 
         assert output_mode in ['direct', 'residual', 'grid', 'gridresid', 'resdirect', 'gridnorm'], 'output_mode should be "direct", "residual", "grid", "gridresid", "resdirect", or "gridnorm"'
         # Grid (classification) modes: per-axis marginal soft-argmax + cross-entropy,
-        # mirroring TrackerTapNext. "gridresid" predicts a motion residual offset.
+        # "gridresid" predicts a motion residual offset.
         # "gridnorm" predicts a gauge-free grid; a per-camera (scale, offset) is SOLVED
         # from the query correspondences (cube_scale/query_local -> solved s_c/t_c), and
         # the depth head is a linear gauge with its own solved affine (scale_d, offset_d).
@@ -869,8 +869,7 @@ class TrackerEncoder(nn.Module):
             p3d_cams = points_3d_raw * rearrange(cube_scale, 'cams b -> cams b 1 1 1')
             if self.output_mode == 'gridresid':
                 # gridresid bins encode motion / (cube * canvas_px) (~pixels, NO f_eff ->
-                # ortho-safe); map back to metric motion by * canvas_px (mirror
-                # tracker_tapnext.py). The normaliser is (world per pixel) x (pixels across) =
+                # ortho-safe); map back to metric motion by * canvas_px. The normaliser is (world per pixel) x (pixels across) =
                 # the crop's world width, which is resize-invariant ONLY if both factors come
                 # from the same resolution: cube_scale is camera-derived and already scales with
                 # the real extent, so the pixel count must too. The loss forms the inverse from
@@ -955,8 +954,7 @@ class TrackerEncoder(nn.Module):
 
         # Grid (classification) supervision: hand the loss the raw 2D/3D/depth bin
         # logits plus the geometry it needs to discretize GT into bin targets (the
-        # exact inverse of the forward decode). Mirrors tracker_tapnext.py:645-672 so
-        # the model-agnostic CE paths in losses.py fire identically for the encoder.
+        # exact inverse of the forward decode), for the cross-entropy paths in losses.py.
         if self.is_grid:
             result_dict['2d_logits'] = rearrange(
                 grid_logits['logits_2d'], 'b t n cams p -> cams b t n p')  # (cams,b,t,n,2P)

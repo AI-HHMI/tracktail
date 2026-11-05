@@ -43,9 +43,7 @@ from lightning.fabric import Fabric
 
 from tracktail.datasets.tracktail_dataset import TracktailDataset, StepDistributedSampler, custom_collate, validation_collate
 from tracktail.model.losses import *
-from tracktail.model.tracker import Tracker
 from tracktail.model.tracker_encoder import TrackerEncoder
-from tracktail.model.tracker_tapnext import TrackerTapNext
 from tracktail.model.train_utils import *
 from tracktail.model.train_utils import _warn_unfilled_video_encoder
 
@@ -222,15 +220,11 @@ def run(config_path, fabric):
     finetune = config.training.get('finetune', False)
 
     # device = torch.device(config.devices.device)
-    if config.model['mode_3d'] == 'encoder':
-        model_kwargs = ({**config.model, 'video_encoder_pretrained': False} if checkpoint_path
-                        else config.model)
-        model = TrackerEncoder(**model_kwargs)
-    elif config.model['mode_3d'] == 'tapnext':
-        model = TrackerTapNext(**config.model)
-    else:
-        model = Tracker(**config.model)
-        
+    check_mode_3d(config.model)
+    model_kwargs = ({**config.model, 'video_encoder_pretrained': False} if checkpoint_path
+                    else config.model)
+    model = TrackerEncoder(**model_kwargs)
+
     model = fabric.setup(model)
 
     model.print_summary()
@@ -375,24 +369,8 @@ def run(config_path, fabric):
                                      checkpoint_dict.get('dropped_keys', []))
 
     # compile the model
-    # model.cnn.compile()
-
-    # model.cnn.stem.compile()
-    # model.cnn.fpn.compile()
-
-    # model.corr_mlp.compile()
-    # model.tsformer.compile()
-
-    # if model.mode_3d == 'minicubes':
-    #     model.minicube_v2v.compile()
-    #     # model.view_attention.compile()
-    # elif model.mode_3d == 'triplane':
-    #     model.triplane_cnn.compile()
-
-    
-    # if model.mode_3d == 'encoder':
-    #     model.query_encoder.compile()
-    #     model.decoder.compile()
+    # model.query_encoder.compile()
+    # model.decoder.compile()
 
     if hasattr(model, 'get_feature_loss'):
         model.mark_forward_method('get_feature_loss')

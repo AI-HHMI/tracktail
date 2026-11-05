@@ -25,9 +25,15 @@ from tracktail.model.eval_metrics import (get_eval_metrics, get_metrics_by_motio
                                          TRACKTAIL_VIS_THRESH)
 from tracktail.model.cube import get_camera_scale
 from tracktail.model.losses import get_vis_true, unroll_batch, normalize_by_mean_depth
-from tracktail.model.tracker import Tracker
 from tracktail.model.tracker_encoder import TrackerEncoder
-from tracktail.model.tracker_tapnext import TrackerTapNext
+
+
+def check_mode_3d(model_config):
+    """TrackerEncoder (mode_3d='encoder') is the only model; fail clearly on any other value."""
+    mode_3d = model_config.get('mode_3d', 'encoder')
+    if mode_3d != 'encoder':
+        raise ValueError(f"model.mode_3d={mode_3d!r} is not supported: the only model is TrackerEncoder "
+                         f"(mode_3d='encoder'). Older models were removed; see the git history.")
 
 from schedulefree import AdamWScheduleFree
 
@@ -587,16 +593,11 @@ def load_checkpoint(config_path, checkpoint_path, model = None,
     built_here = model is None
     if model is None: 
 
-        if config.model.mode_3d == 'encoder':
-            # This function loads a full model_state into the model below (strict=False, so
-            # coverage is not guaranteed -- see _warn_unfilled_video_encoder), so the public
-            # VJEPA2 download would be discarded. TrackerTapNext/Tracker have no video backbone
-            # and do not accept the kwarg.
-            model = TrackerEncoder(**{**config.model, 'video_encoder_pretrained': False})
-        elif config.model.mode_3d == 'tapnext':
-            model = TrackerTapNext(**config.model)
-        else:
-            model = Tracker(**config.model)
+        check_mode_3d(config.model)
+        # This function loads a full model_state into the model below (strict=False, so
+        # coverage is not guaranteed -- see _warn_unfilled_video_encoder), so the public
+        # VJEPA2 download would be discarded.
+        model = TrackerEncoder(**{**config.model, 'video_encoder_pretrained': False})
 
         model.to(device)
 
@@ -684,15 +685,11 @@ def load_checkpoint_no_inductor(config_path, checkpoint_path):
     if not torch.cuda.is_available(): 
         device = torch.device('cpu')
 
-    if config.model.mode_3d == 'encoder':
-        # The strict load below (model.load_state_dict(state_dict), no strict=False) already
-        # requires every video-encoder key to be present, so a missing one raises instead of
-        # silently leaving a param at fresh init -- no extra guard needed here.
-        model = TrackerEncoder(**{**config.model, 'video_encoder_pretrained': False})
-    elif config.model.mode_3d == 'tapnext':
-        model = TrackerTapNext(**config.model)
-    else:
-        model = Tracker(**config.model) 
+    check_mode_3d(config.model)
+    # The strict load below (model.load_state_dict(state_dict), no strict=False) already
+    # requires every video-encoder key to be present, so a missing one raises instead of
+    # silently leaving a param at fresh init -- no extra guard needed here.
+    model = TrackerEncoder(**{**config.model, 'video_encoder_pretrained': False})
 
     model.to(device)
 
@@ -832,8 +829,7 @@ def train_iteration(config, model, fabric, batch,
 
     optimizer.zero_grad()
 
-    # Per-camera occlusion query term (occlusion_embedding). Gated on the model attribute so
-    # Tracker/TrackerTapNext (whose forward doesn't accept occlusion) are unaffected.
+    # Per-camera occlusion query term (occlusion_embedding), gated on the model attribute.
     model_kwargs = {}
     if getattr(model, 'occlusion_embedding', False):
         model_kwargs['occlusion'] = getattr(batch, 'query_occlusion', None)
