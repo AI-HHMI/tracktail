@@ -5,7 +5,7 @@
 #
 # CAMS is the number of cameras: 4 = views 2, 4, 5, 7 (view2 view4 view5 view7), 9 = all cameras. Both are run by
 # default, each into its own folder (the query frames depend on the cameras):
-#   $OUTPUT_BASE/paper-po-4cams   and   $OUTPUT_BASE/paper-po-9cams
+#   $OUTPUT_BASE/paper-po-4cams   and   $OUTPUT_BASE/paper-po-9cams   (default OUTPUT_BASE = $COTRACKER_OUT_BASE)
 #
 # Usage:
 #   bash cotracker_cached_po.sh [CAMS] [DATASETS] [POSE_FILE]
@@ -15,7 +15,8 @@
 #   bash cotracker_cached_po.sh 4
 #   bash cotracker_cached_po.sh "4 9" point-odyssey-human
 #
-# Env overrides: DATASET_ROOT, OUTPUT_BASE, DEVICE (default cuda:0).
+# Paths come from paper.env (TRACKTAIL_DATA, COTRACKER_REPO, COTRACKER_CKPT); runs in the pixi env.
+# Env overrides: DATASET_ROOT, OUTPUT_BASE, DEVICE (default cuda:0), PYTHON, CKPT.
 
 set -e
 
@@ -25,15 +26,14 @@ POSE_FILE=${3:-pose3d.npz}
 DEVICE=${DEVICE:-cuda:0}
 
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$SCRIPTS/.."
-export PYTHONPATH="/home/ruppk2@hhmi.org/software/co-tracker:$REPO:$PYTHONPATH"
-
-DATASET_ROOT=${DATASET_ROOT:-/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6}
-OUTPUT_BASE=${OUTPUT_BASE:-/groups/karashchuk/home/ruppk2/results/paper-final-v2/cotracker-outputs}
-CKPT=/home/ruppk2@hhmi.org/software/cotracker-weights/scaled_offline.pth
-
+REPO="$(cd "$SCRIPTS/.." && pwd)"
+source "$REPO/scripts/paper_common.sh"
+export PYTHONPATH="$COTRACKER_REPO:$REPO${PYTHONPATH:+:$PYTHONPATH}"
+PYTHON=${PYTHON:-$PIXI_PYTHON}
+CKPT=${CKPT:-$COTRACKER_CKPT}
+DATASET_ROOT=${DATASET_ROOT:-$TRACKTAIL_DATA}
+OUTPUT_BASE=${OUTPUT_BASE:-$COTRACKER_OUT_BASE}
 cd "$SCRIPTS"
-if [[ -x "$REPO/.pixi/envs/default/bin/python" ]]; then PYTHON="$REPO/.pixi/envs/default/bin/python"; else PYTHON="pixi run python"; fi
 
 for N in $CAMS; do
     if [[ "$N" == "4" ]]; then

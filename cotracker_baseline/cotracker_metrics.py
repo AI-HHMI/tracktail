@@ -134,7 +134,7 @@ def load_ground_truth(pose_path, frame_numbers, valid_mask, cam_indices=None):
     if vis_gt_raw is not None:
         # Restrict to the cameras actually used for triangulation so that
         # occlusion GT is consistent with what the model saw (same fix as
-        # in the posetail eval pipeline).
+        # in the Tracktail eval pipeline).
         vis_sub = vis_gt_raw[..., cam_indices] if cam_indices is not None else vis_gt_raw
         vis_agg  = vis_sub.any(axis=-1)                     # (S, T_full, K)
         vis_flat = vis_agg.transpose(0, 2, 1)               # (S, K, T_full)

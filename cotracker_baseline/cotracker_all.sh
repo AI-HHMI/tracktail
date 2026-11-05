@@ -8,15 +8,25 @@
 #              dex_ycb           → view_00 view_01 view_02 view_03
 #              cmupanoptic_3dgs  → 1 7 14 20
 #              other datasets    → all cameras
+# Results: $OUTPUT_BASE/paper-<canonical|Ncams|all> (default OUTPUT_BASE = $COTRACKER_OUT_BASE). Not used for the
+# paper tables (see cotracker_cached.sh, cotracker_cached_po.sh).
+# Paths come from paper.env (TRACKTAIL_DATA, COTRACKER_REPO, COTRACKER_CKPT); runs in the pixi env.
+# Env overrides: DATASETS, DATASET_ROOT, OUTPUT_BASE, DEVICE (default cuda:0), PYTHON, CKPT.
 
-export PYTHONPATH="/home/ruppk2@hhmi.org/software/co-tracker:$PYTHONPATH"
+SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(cd "$SCRIPTS/.." && pwd)"
+source "$REPO/scripts/paper_common.sh"
+export PYTHONPATH="$COTRACKER_REPO:$REPO${PYTHONPATH:+:$PYTHONPATH}"
+PYTHON=${PYTHON:-$PIXI_PYTHON}
+CKPT=${CKPT:-$COTRACKER_CKPT}
+DATASET_ROOT=${DATASET_ROOT:-$TRACKTAIL_DATA}
+DEVICE=${DEVICE:-cuda:0}
+cd "$SCRIPTS"
 
 MODE=${1:-}      # number of cameras, "canonical", or empty (all)
 POSE_FILE=${2:-pose3d.npz}
-DATASET_ROOT=/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6
-CKPT=/home/ruppk2@hhmi.org/software/cotracker-weights/scaled_offline.pth
-# DATASETS="kubric-multiview dex_ycb cmupanoptic_3dgs tapvid3d_adt tapvid3d_drivetrack tapvid3d_pstudio"
-DATASETS="po-animal-sub256-motion point-odyssey-human"
+# e.g. DATASETS="kubric-multiview dex_ycb cmupanoptic_3dgs tapvid3d_adt tapvid3d_drivetrack tapvid3d_pstudio"
+DATASETS=${DATASETS:-"po-animal-sub256-motion point-odyssey-human"}
 
 if [[ "$MODE" == "canonical" ]]; then
     NCAMS_LABEL="canonical"
@@ -29,17 +39,17 @@ else
     N_VIEWS_ARG=""
 fi
 
-OUTPUT_ROOT=/groups/karashchuk/home/ruppk2/results/paper-final-v2/cotracker-outputs/paper-${NCAMS_LABEL}
+OUTPUT_ROOT=${OUTPUT_BASE:-$COTRACKER_OUT_BASE}/paper-${NCAMS_LABEL}
 
 # run inference on cotracker baseline (predict individually on each camera view)
 # inference always runs on all cameras — view selection happens at triangulation
-pixi run python cotracker_inference.py \
+$PYTHON cotracker_inference.py \
     --dataset-root $DATASET_ROOT \
     --output-root $OUTPUT_ROOT \
     --datasets $DATASETS \
     --split test \
     --checkpoint $CKPT \
-    --device cuda:0 \
+    --device "$DEVICE" \
     --query-batch-size 1024 \
     --pose-file "$POSE_FILE"
 
@@ -55,7 +65,7 @@ if [[ "$MODE" == "canonical" ]]; then
         if [[ -n "${CANONICAL_CAMS[$DATASET]}" ]]; then
             CAM_ARG="--cam-names ${CANONICAL_CAMS[$DATASET]}"
         fi
-        pixi run python cotracker_triangulate.py \
+        $PYTHON cotracker_triangulate.py \
             --dataset-root $DATASET_ROOT \
             --output-root $OUTPUT_ROOT \
             --datasets $DATASET \
@@ -64,7 +74,7 @@ if [[ "$MODE" == "canonical" ]]; then
             --view-seed 0
     done
 else
-    pixi run python cotracker_triangulate.py \
+    $PYTHON cotracker_triangulate.py \
         --dataset-root $DATASET_ROOT \
         --output-root $OUTPUT_ROOT \
         --datasets $DATASETS \
@@ -74,7 +84,7 @@ else
 fi
 
 # compute the evaluation metrics
-pixi run python cotracker_metrics.py \
+$PYTHON cotracker_metrics.py \
     --dataset-root $DATASET_ROOT \
     --output-root $OUTPUT_ROOT \
     --datasets $DATASETS \
@@ -82,5 +92,5 @@ pixi run python cotracker_metrics.py \
     --force
 
 # combine the evaluation metrics into a summary dataframe
-pixi run python /home/ruppk2@hhmi.org/posetail/scripts/combine_metrics.py \
+$PYTHON "$REPO/scripts/combine_metrics.py" \
     --prefix $OUTPUT_ROOT

@@ -10,7 +10,9 @@
 #   bash cotracker_cached.sh
 #   bash cotracker_cached.sh "dex_ycb cmupanoptic_3dgs"
 #
-# Env overrides: OUTPUT_ROOT, DEVICE (default cuda:0).
+# Results: $OUTPUT_ROOT (default $COTRACKER_OUT_BASE/paper-canonical-cached).
+# Paths come from paper.env (TRACKTAIL_DATA, COTRACKER_REPO, COTRACKER_CKPT); runs in the pixi env.
+# Env overrides: DATASET_ROOT, OUTPUT_ROOT, DEVICE (default cuda:0), PYTHON, CKPT.
 
 set -e
 
@@ -19,15 +21,14 @@ POSE_FILE=${2:-pose3d_cached.npz}
 DEVICE=${DEVICE:-cuda:0}
 
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$SCRIPTS/.."
-export PYTHONPATH="/home/ruppk2@hhmi.org/software/co-tracker:$REPO:$PYTHONPATH"
-
-DATASET_ROOT=/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6
-OUTPUT_ROOT=${OUTPUT_ROOT:-/groups/karashchuk/home/ruppk2/results/paper-final-v2/cotracker-outputs/paper-canonical-cached}
-CKPT=/home/ruppk2@hhmi.org/software/cotracker-weights/scaled_offline.pth
-
+REPO="$(cd "$SCRIPTS/.." && pwd)"
+source "$REPO/scripts/paper_common.sh"
+export PYTHONPATH="$COTRACKER_REPO:$REPO${PYTHONPATH:+:$PYTHONPATH}"
+PYTHON=${PYTHON:-$PIXI_PYTHON}
+CKPT=${CKPT:-$COTRACKER_CKPT}
+DATASET_ROOT=${DATASET_ROOT:-$TRACKTAIL_DATA}
+OUTPUT_ROOT=${OUTPUT_ROOT:-$COTRACKER_OUT_BASE/paper-canonical-cached}
 cd "$SCRIPTS"
-if [[ -x "$REPO/.pixi/envs/default/bin/python" ]]; then PYTHON="$REPO/.pixi/envs/default/bin/python"; else PYTHON="pixi run python"; fi
 
 declare -A CANONICAL_CAMS=(
     [kubric-multiview]="view_0 view_1 view_2 view_3"

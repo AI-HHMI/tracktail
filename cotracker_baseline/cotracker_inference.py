@@ -165,7 +165,7 @@ def run_cotracker_single_camera(
     return torch.cat(all_tracks, dim=1), torch.cat(all_vis, dim=1)
 
 
-TARGET_RES = 256  # resize-and-pad target matching posetail's inference resolution
+TARGET_RES = 256  # resize-and-pad target matching Tracktail's inference resolution
 
 
 def resize_and_pad(frames: np.ndarray, target: int = TARGET_RES):
@@ -289,7 +289,7 @@ def process_trial(
 
         frames = views[k]  # (T, H, W, 3), uint8 tensor from decord/cv2
 
-        # Resize and pad to TARGET_RES × TARGET_RES (matching posetail's inference resolution)
+        # Resize and pad to TARGET_RES × TARGET_RES (matching Tracktail's inference resolution)
         frames_np = frames.numpy() if isinstance(frames, torch.Tensor) else np.asarray(frames)
         frames_np, rp_scale, rp_pad_left, rp_pad_top = resize_and_pad(frames_np)
         video_size = np.array([TARGET_RES, TARGET_RES], dtype=np.int32)

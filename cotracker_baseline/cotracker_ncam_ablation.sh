@@ -10,8 +10,10 @@
 # Usage:
 #   bash cotracker_ncam_ablation.sh [N ...]      default: 2 3 4 5 6 7 8
 #
-# Results: $ABLATION_ROOT/nviews-N/, and ncam_ablation_summary.csv over all N at the end.
-# Env overrides: ABLATION_ROOT, DEVICE (default cuda:0).
+# Results: $ABLATION_ROOT/nviews-N/, and ncam_ablation_summary.csv over all N at the end
+#   (default ABLATION_ROOT = $COTRACKER_OUT_BASE/ncam-ablation-dexycb).
+# Paths come from paper.env (TRACKTAIL_DATA, COTRACKER_REPO, COTRACKER_CKPT); runs in the pixi env.
+# Env overrides: ABLATION_ROOT, DATASET_ROOT, DEVICE (default cuda:0), PYTHON, CKPT.
 
 set -e
 
@@ -19,15 +21,14 @@ NS=${*:-"2 3 4 5 6 7 8"}
 DEVICE=${DEVICE:-cuda:0}
 
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$SCRIPTS/.."
-export PYTHONPATH="/home/ruppk2@hhmi.org/software/co-tracker:$REPO:$PYTHONPATH"
-
-DATASET_ROOT=/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6
-CKPT=/home/ruppk2@hhmi.org/software/cotracker-weights/scaled_offline.pth
-ABLATION_ROOT=${ABLATION_ROOT:-/groups/karashchuk/home/ruppk2/results/paper-final-v2/cotracker-outputs/ncam-ablation-dexycb}
-
+REPO="$(cd "$SCRIPTS/.." && pwd)"
+source "$REPO/scripts/paper_common.sh"
+export PYTHONPATH="$COTRACKER_REPO:$REPO${PYTHONPATH:+:$PYTHONPATH}"
+PYTHON=${PYTHON:-$PIXI_PYTHON}
+CKPT=${CKPT:-$COTRACKER_CKPT}
+DATASET_ROOT=${DATASET_ROOT:-$TRACKTAIL_DATA}
+ABLATION_ROOT=${ABLATION_ROOT:-$COTRACKER_OUT_BASE/ncam-ablation-dexycb}
 cd "$SCRIPTS"
-if [[ -x "$REPO/.pixi/envs/default/bin/python" ]]; then PYTHON="$REPO/.pixi/envs/default/bin/python"; else PYTHON="pixi run python"; fi
 
 for N in $NS; do
     OUT_ROOT="${ABLATION_ROOT}/nviews-${N}"

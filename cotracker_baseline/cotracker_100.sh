@@ -8,11 +8,19 @@
 #      bash cotracker_100.sh canonical "dex_ycb cmupanoptic_3dgs"
 # canonical: the cameras of the MVTracker tables. N_VIEWS (random cameras) is not meaningful for the cached tracks,
 # whose visibility is only given for the canonical cameras.
+# Results: $OUTPUT_BASE/paper-<canonical|N>cams-cached-100 (default OUTPUT_BASE = $COTRACKER_OUT_BASE).
+# Paths come from paper.env (TRACKTAIL_DATA, COTRACKER_REPO, COTRACKER_CKPT); runs in the pixi env.
+# Env overrides: DATASET_ROOT, OUTPUT_BASE, OUTPUT_ROOT, DEVICE (default cuda:0), PYTHON, CKPT.
 
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PYTHONPATH="/home/ruppk2@hhmi.org/software/co-tracker:$SCRIPTS/..:$PYTHONPATH"
+REPO="$(cd "$SCRIPTS/.." && pwd)"
+source "$REPO/scripts/paper_common.sh"
+export PYTHONPATH="$COTRACKER_REPO:$REPO${PYTHONPATH:+:$PYTHONPATH}"
+PYTHON=${PYTHON:-$PIXI_PYTHON}
+CKPT=${CKPT:-$COTRACKER_CKPT}
+DATASET_ROOT=${DATASET_ROOT:-$TRACKTAIL_DATA}
+DEVICE=${DEVICE:-cuda:0}
 cd "$SCRIPTS"
-if [[ -x "$SCRIPTS/../.pixi/envs/default/bin/python" ]]; then PYTHON="$SCRIPTS/../.pixi/envs/default/bin/python"; else PYTHON="pixi run python"; fi
 
 MODE=${1:-canonical}
 DATASETS=${2:-"kubric-multiview dex_ycb cmupanoptic_3dgs"}
@@ -26,9 +34,8 @@ else
     N_VIEWS_ARG="--n-views $MODE"
 fi
 
-DATASET_ROOT=/groups/karashchuk/karashchuklab/animal-datasets-processed/posetail-pretraining-v6
-OUTPUT_ROOT=/groups/karashchuk/home/ruppk2/results/paper-final-v2/cotracker-outputs/paper-${NCAMS_LABEL}cams-cached-100
-CKPT=/home/ruppk2@hhmi.org/software/cotracker-weights/scaled_offline.pth
+OUTPUT_BASE=${OUTPUT_BASE:-$COTRACKER_OUT_BASE}
+OUTPUT_ROOT=${OUTPUT_ROOT:-$OUTPUT_BASE/paper-${NCAMS_LABEL}cams-cached-100}
 
 declare -A CANONICAL_CAMS=(
     [kubric-multiview]="view_0 view_1 view_2 view_3"
@@ -46,7 +53,7 @@ if [[ "$MODE" == "canonical" ]]; then
             --datasets $DATASET \
             --split test \
             --checkpoint $CKPT \
-            --device cuda:0 \
+            --device "$DEVICE" \
             --query-batch-size 1024 \
             --pose-file "$POSE_FILE" \
             --query-first \
@@ -59,7 +66,7 @@ else
         --datasets $DATASETS \
         --split test \
         --checkpoint $CKPT \
-        --device cuda:0 \
+        --device "$DEVICE" \
         --query-batch-size 1024 \
         --pose-file "$POSE_FILE" \
         --query-first
@@ -102,5 +109,5 @@ $PYTHON cotracker_metrics.py \
     --pose-file "$POSE_FILE"
 
 # combine the evaluation metrics into a summary dataframe
-$PYTHON /home/ruppk2@hhmi.org/posetail/scripts/combine_metrics.py \
+$PYTHON "$REPO/scripts/combine_metrics.py" \
     --prefix $OUTPUT_ROOT

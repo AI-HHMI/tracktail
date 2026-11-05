@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Render CoTracker predictions using render_video.py.
 #
-# Renders go to $RENDER_ROOT (default /home/ruppk2@hhmi.org/renders-v2) so the earlier renders are kept. Frames before a
+# Renders go to $RENDER_ROOT (default $TRACKTAIL_RESULTS/renders) so the earlier renders are kept. Frames before a
 # track's query frame are hidden (render_video.py).
 #
 # Usage:
 #   bash cotracker_render.sh <output-dir> [dataset ...]
 #
 # Example (all datasets):
-#   bash cotracker_render.sh /groups/karashchuk/home/ruppk2/results/paper/cotracker-outputs/paper-4cams
+#   bash cotracker_render.sh $COTRACKER_OUT_BASE/paper-canonicalcams-cached-100
 # Example (specific datasets):
-#   bash cotracker_render.sh /groups/karashchuk/home/ruppk2/results/paper/cotracker-outputs/paper-4cams dex_ycb
+#   bash cotracker_render.sh $COTRACKER_OUT_BASE/paper-canonicalcams-cached-100 dex_ycb
 
 set -e
 
@@ -19,11 +19,12 @@ shift
 DATASETS=("${@:-*}")
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export PYTHONPATH="/home/ruppk2@hhmi.org/software/mvtracker:$REPO:$PYTHONPATH"
+source "$REPO/scripts/paper_common.sh"
+export PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}"
 
-if [[ -x "$REPO/.pixi/envs/default/bin/python" ]]; then PYTHON="$REPO/.pixi/envs/default/bin/python"; else PYTHON=/groups/karashchuk/home/ruppk2/miniforge3/envs/mvtracker/bin/python; fi
+PYTHON=$PIXI_PYTHON
 SCRIPT="$REPO/scripts/render_video.py"
-RENDER_ROOT=${RENDER_ROOT:-/home/ruppk2@hhmi.org/renders-v2}
+RENDER_ROOT=${RENDER_ROOT:-$TRACKTAIL_RESULTS/renders}
 RENDER_BASE=$RENDER_ROOT/cotracker-renders/$(basename "$OUTPUT_DIR")
 
 for dataset in "${DATASETS[@]}"; do

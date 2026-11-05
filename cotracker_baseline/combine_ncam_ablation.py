@@ -3,7 +3,7 @@ Combine per-nviews summaries into a single ncam_ablation_summary.csv.
 
 Supports two source formats:
   - combined_summary_metrics.csv  (cotracker / mvtracker pipeline)
-  - summary.json                  (posetail eval_testset_metrics.py)
+  - summary.json                  (Tracktail scripts/eval_testset_metrics.py)
 
 For summary.json the output columns are unprefixed (avg_jaccard, mte, …)
 using mean aggregates, matching the notebook convention:
