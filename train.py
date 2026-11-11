@@ -102,7 +102,7 @@ def run(config_path, fabric):
     # (cube.triangulate_simple_batch_reg), so neither carries the ~6.5e5 camera-distance
     # magnitude through a reduced-precision matmul. Previously 'medium'/'high' (bf16/TF32,
     # esp. on Blackwell) rounded away the pixel-scale signal and the 3D reconstruction
-    # collapsed on far-camera datasets like johnson-fly. Set 'highest' if a far-camera run
+    # collapsed on far-camera datasets. Set 'highest' if a far-camera run
     # ever looks off. (The rays head separately mispredicts absolute ~6.5e5 depth for far
     # cameras under ANY precision — a pre-existing modeling issue, not matmul precision.)
     torch.set_float32_matmul_precision('medium')

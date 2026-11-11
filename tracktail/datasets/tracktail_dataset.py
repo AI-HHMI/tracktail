@@ -708,7 +708,7 @@ class TracktailDataset(Dataset):
         # positional indices per dataset, aligned with good_index, for
         # same-dataset-first resampling when get_item_actual fails
         self.dataset_indices = self.metadata.groupby('dataset').indices
-        # self.metadata_path = os.path.join(data_path, 'posetail_metadata.csv')
+        # self.metadata_path = os.path.join(data_path, 'metadata.csv')
         # self.metadata.to_csv(self.metadata_path, index = False)
 
 

@@ -1123,7 +1123,7 @@ class WeightedMAELoss(nn.Module):
         # Huber square now acts on the pixel error, so no power of cube_scale leaks
         # through (the old `huber(world_err) / (cube_scale * k)` was effectively
         # 0.5 * cube_scale * pixel_err^2 / k -- one un-cancelled cube_scale, so the
-        # loss vanished for small-cube datasets like tuthill-fly). For L1
+        # loss vanished for small-cube datasets). For L1
         # (use_huber_loss=False) dividing before vs after is identical; only the
         # Huber path changes. loss_scale is applied linearly so it cannot
         # reintroduce a scale dependence.

@@ -34,7 +34,6 @@ classifiers = [
 ]
 
 [project.urls]
-Repository = "https://github.com/AI-HHMI/tracktail"
 
 [tool.setuptools]
 # `tracktail` (a real package via tracktail/__init__.py) plus its subpackages — including

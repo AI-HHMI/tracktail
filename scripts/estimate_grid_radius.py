@@ -240,7 +240,7 @@ def main():
         print(f"    with_feff: {min(wf):.4f} .. {max(wf):.4f}  ({max(wf)/max(min(wf),1e-9):.1f}x)\n")
 
     # absolute grid: f_eff cancels the depth scaling -> O(1) AND camera-invariant
-    # (works for ortho); no_feff ~ f_eff (huge, broken for ortho johnson-fly).
+    # (works for ortho); no_feff ~ f_eff (huge, broken for orthographic-like datasets).
     _table("GRID (absolute) |target| per dataset:",
            "no_feff = rays_c·GT / cube (~f_eff units)   with_feff = rays_c·GT / (cube·f_eff)",
            "g_nf", "g_wf", ".1f", ".4f")
@@ -252,7 +252,7 @@ def main():
 
     print("KEY: f_eff cancels for ABSOLUTE depth (so grid wants /cube/f_eff, ortho-safe),")
     print("     but f_eff is the WRONG normalizer for MOTION (gridresid wants /cube ~pixels,")
-    print("     ortho-safe). With f_eff the ortho johnson-fly residual collapses to ~0.\n")
+    print("     ortho-safe). With f_eff the orthographic-like datasets residual collapses to ~0.\n")
 
     for k in agg:
         agg[k] = np.concatenate(agg[k], 0) if agg[k] else np.zeros((0, 3))
@@ -270,7 +270,7 @@ def main():
     print("  Higher 'eff' = bins better used. A peaked-at-0 target wastes a linear "
           "grid; signed-log\n  spreads the central bulk across more bins. "
           "'resid_nofeff' = motion/cube ~ PIXELS\n  (camera-type-invariant; the only "
-          "residual that survives ortho johnson-fly).\n")
+          "residual that survives orthographic-like datasets).\n")
     for name, arr in [("grid       (absolute  /cube/feff)", g),
                       ("gridresid  (residual  /cube/feff)", r_),
                       ("resid_nofeff (residual /cube ~px)", rnf)]:

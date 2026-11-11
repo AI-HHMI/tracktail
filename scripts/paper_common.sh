@@ -55,8 +55,7 @@ model_args() {
     fi
 }
 
-# Results trees (same subfolder names as the paper's results; the Tracktail tree was called
-# posetail-outputs-vis0.1-occunknown on disk)
+# Results trees (same subfolder names as the paper's results)
 TRACKTAIL_OUT_BASE="${TRACKTAIL_OUT_BASE:-$TRACKTAIL_RESULTS/tracktail-outputs}"
 MVTRACKER_OUT_BASE="${MVTRACKER_OUT_BASE:-$TRACKTAIL_RESULTS/mvtracker-outputs}"
 COTRACKER_OUT_BASE="${COTRACKER_OUT_BASE:-$TRACKTAIL_RESULTS/cotracker-outputs}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tracktail n-camera ablation on dex_ycb. Runs directly (no bsub), same style as tracktail_cached.sh.
+# Tracktail n-camera ablation on dex_ycb. Runs directly, same style as tracktail_cached.sh.
 #
 # N = 1 ... 8 cameras, nested: view_00 ... view_{N-1} (N = 4 is the canonical set of the MVTracker tables). Every N
 # runs on its own track file, pose3d_ncam{N}_512.npz (scripts/make_pose3d_ncam.py), which the CoTracker and MVTracker
@@ -8,7 +8,6 @@
 #
 # Usage:
 #   bash scripts/eval_ncam_ablation_local.sh [N ...]      default: 1 2 3 4 5 6 7 8
-#   (scripts/eval_ncam_ablation.sh submits one LSF job per N instead)
 #
 # Results: $OUT_BASE/nviews-N/, and ncam_ablation_summary.csv over all N at the end
 #   (default OUT_BASE=$TRACKTAIL_RESULTS/tracktail-outputs/ncam_ablation_dexycb).

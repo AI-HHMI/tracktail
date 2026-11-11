@@ -9,7 +9,7 @@ Stages (all run by default; `--stages` picks a subset, later stages reuse earlie
             5. fuse:   back-project with OUR K/dist/extrinsics; keep points inside all masks, not in front
                        of any other view's depth (25 mm) and within 12 mm of >=2 other cameras' depth
             6. repeat 4-5 three times with the fused cloud as anchors; voxel-downsample to <= 6000 points
-  track   track the cloud with Tracktail (ai-hhmi/tracktail-static @ 2026-10-12) as 3D queries
+  track   track the cloud with Tracktail (anonymous/tracktail-static @ 2026-10-12) as 3D queries
   figure  cover panels: camera1 + 3 small views with fading trails, 5-view row, camera frustums, input grid,
           3D renders of the cloud at several times (row + time-lapse scenes; `_glow` = dark hero version
           with tracks between poses (white bg by default; bg='#05060a' for the dark look), display-smoothed with a 2-frame Gaussian, and the query pose highlighted)
@@ -282,7 +282,7 @@ def build_cloud(trial, frame, sam_ckpt, n_iter=3, max_pts=6000):
 
 
 # ============================================================================ stage 2: track
-def track_cloud(trial, frame, xyz, n_frames, repo='ai-hhmi/tracktail-static', revision='2026-10-12'):
+def track_cloud(trial, frame, xyz, n_frames, repo='anonymous/tracktail-static', revision='2026-10-12'):
     from tracktail.model.tracker_encoder import TrackerEncoder
     from tracktail.inference.inference_utils import run_tracker_encoder_on_videos
     model = TrackerEncoder.from_pretrained(repo, revision=revision).cuda().eval()

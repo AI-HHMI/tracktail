@@ -1,20 +1,21 @@
 # Tracktail: reproducing the paper
 
-This is the `paper` branch of [Tracktail](https://github.com/AI-HHMI/tracktail). It contains everything
-needed to reproduce the results in the Tracktail paper: the exact training configs, the evaluation
-scripts, and the setup for the baseline methods we compare against.
-<!-- TODO: paper title + arXiv link -->
+> **Anonymized for double-blind review.** Repository links, the model-weights location and
+> author/institution details have been removed. Links and the Hugging Face model id below
+> (`anonymous/tracktail-static`) are placeholders; the code, the companion repositories and the
+> released model weights will be made public upon acceptance.
 
-If you just want to *use* Tracktail on your own videos, go to the
-[`main` branch](https://github.com/AI-HHMI/tracktail) instead.
+This code accompanies the submission *Tracktail: Multi-View 3D Point Tracking without Depth Input*.
+It contains everything needed to reproduce the results in the paper: the exact training configs,
+the evaluation scripts, and the setup for the baseline methods we compare against.
 
 The paper is reproduced with three repositories:
 
 | Repository | What it does |
 |---|---|
 | **tracktail** (this branch) | runs Tracktail and the baselines, and computes the metrics |
-| [tracktail-paper](https://github.com/AI-HHMI/tracktail-paper) | turns the metrics into the paper's tables and figures |
-| [tracktail-preprocessing](https://github.com/AI-HHMI/tracktail-preprocessing) (tag `v1.0-paper`) | converts public datasets into the format used here |
+| tracktail-paper *(anonymized, released upon acceptance)* | turns the metrics into the paper's tables and figures |
+| tracktail-preprocessing *(anonymized, released upon acceptance)* (tag `v1.0-paper`) | converts public datasets into the format used here |
 
 You can go as deep as you like:
 
@@ -31,7 +32,7 @@ The metrics behind every table and figure are saved in the tracktail-paper repos
 regenerate them without any data or GPU:
 
 ```bash
-git clone https://github.com/AI-HHMI/tracktail-paper
+git clone <tracktail-paper repository URL>   # anonymized for review
 cd tracktail-paper
 pixi install
 pixi run paper          # writes tables/*.tex and figures/*.pdf
@@ -46,8 +47,7 @@ The rest of this README explains how to produce those saved metrics yourself.
 **Install.** We use [pixi](https://pixi.sh) for the environment (Python 3.11, PyTorch with CUDA 12.8):
 
 ```bash
-git clone -b paper https://github.com/AI-HHMI/tracktail.git
-cd tracktail
+cd tracktail   # this repository
 pixi install
 ```
 
@@ -88,7 +88,7 @@ $TRACKTAIL_DATA/<dataset>/{train,val,test}/<session>/<trial>/
   all tracks are in `pose3d_full.npz`.
 
 - **DexYCB, Panoptic Studio, TAPVid-3D and Rat7M** (test only) are downloaded from their original
-  sources and converted with [tracktail-preprocessing](https://github.com/AI-HHMI/tracktail-preprocessing):
+  sources and converted with tracktail-preprocessing:
 
   | Dataset folder | Download | Used for |
   |---|---|---|
@@ -98,7 +98,7 @@ $TRACKTAIL_DATA/<dataset>/{train,val,test}/<session>/<trial>/
   | `rat7m` | [Rat 7M](https://doi.org/10.6084/m9.figshare.c.5295370) | cover figure |
 
   ```bash
-  git clone https://github.com/AI-HHMI/tracktail-preprocessing
+  git clone <tracktail-preprocessing repository URL>   # anonymized for review
   cd tracktail-preprocessing && git checkout v1.0-paper && pixi install
   # --in is the downloaded folder; --seed 3 is what the paper used
   pixi run python generate_processed_dataset.py --dataset dex_ycb          --in RAW/dex-ycb-multiview  --out $TRACKTAIL_DATA --seed 3
@@ -124,9 +124,10 @@ pixi run python scripts/make_pose3d_ncam.py          # DexYCB tracks for 1 to 8 
 
 ## 2. Re-evaluate Tracktail
 
-The model from the paper is released on Hugging Face as
-[`ai-hhmi/tracktail-static`](https://huggingface.co/ai-hhmi/tracktail-static), revision `2026-10-12`.
-The scripts download it automatically.
+The model from the paper will be released on Hugging Face upon acceptance (anonymized here as
+`anonymous/tracktail-static`, revision `2026-10-12`); the scripts then download it automatically.
+To use a local copy of the weights instead, set `TRACKTAIL_HF_REPO` / `TRACKTAIL_HF_REVISION`, pass
+`--checkpoint model.pth`, or place it at `$TRACKTAIL_MODELS/main_finetune_vzkjqrys/model.pth`.
 
 By default the scripts use the paper's settings: 4 cameras on the MVTracker benchmarks, the query
 point's visibility is not given to the model, and points count as visible above a probability of 0.1.
@@ -280,8 +281,7 @@ All set in [`paper.env`](paper.env); override them in `paper.local.env`.
 | `TRACKTAIL_WANDB_BASE` | optional: folder of W&B training runs to load models from | not set |
 
 Results are written to `$TRACKTAIL_RESULTS/{tracktail,mvtracker,cotracker,arrow}-outputs/`, with the
-same subfolder names as in the paper's results. No script needs a job scheduler. Scripts that can
-submit cluster (LSF) jobs only do so with `SUBMIT=1`.
+same subfolder names as in the paper's results. No script needs a job scheduler.
 
 ### Loading models
 
@@ -327,4 +327,4 @@ The code is in `tracktail/model/eval_metrics_paper.py`. Some details are not spe
 
 ## Citation
 
-<!-- TODO: BibTeX once public -->
+Anonymized for review.

@@ -45,7 +45,7 @@ class TrackerEncoder(nn.Module):
         commit, or date tag such as ``"2026-10-12"``.
 
         Args:
-            repo_id: Hugging Face model repository, e.g. ``"ai-hhmi/tracktail-static"``.
+            repo_id: Hugging Face model repository, e.g. ``"anonymous/tracktail-static"``.
             revision: Hub revision to download. Defaults to the repository's default branch.
             device: Device for the model and checkpoint. Defaults to CUDA when available.
             cache_dir: Optional Hugging Face cache directory.
@@ -909,8 +909,8 @@ class TrackerEncoder(nn.Module):
             # Anchor-relative reconstruction (numerically robust):
             #   world = query_world + R_{ray->world} @ residual
             # is exactly  rays_c_inv @ (residual + rays_c @ query_world)  but never forms the
-            # absolute ray-local coordinate (~camera distance; ~6.5e5 for far cameras such as
-            # johnson-fly), whose magnitude annihilates the ~pixel-scale residual under
+            # absolute ray-local coordinate (~camera distance; ~6.5e5 for far
+            # cameras), whose magnitude annihilates the ~pixel-scale residual under
             # reduced-precision matmul (TF32/bf16). See scripts/precision_sim.py.
             points_3d_all_direct = query_world + einsum(
                 rays_c_inv[..., :3, :3], p3d_cams,

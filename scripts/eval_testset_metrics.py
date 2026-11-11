@@ -27,7 +27,7 @@ Usage:
     pixi run python scripts/eval_testset_metrics.py \\
         --datasets dex_ycb kubric-multiview cmupanoptic_3dgs --out <preds_dir>
 
-    # compute missing predictions with the paper model (ai-hhmi/tracktail-static@2026-10-12):
+    # compute missing predictions with the paper model (anonymous/tracktail-static@2026-10-12):
     pixi run python scripts/eval_testset_metrics.py --datasets dex_ycb --out <preds_dir> [--force]
 
     # another model: a Hub checkpoint, a local packaged model.pth, or a training run

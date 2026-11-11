@@ -520,7 +520,7 @@ def main():
     p.add_argument("--tracktail-overlap", type=int, default=8)
     sys.path.insert(0, str(REPO))
     from tracktail.inference.model_args import add_model_args
-    add_model_args(p)   # Tracktail model: default ai-hhmi/tracktail-static@2026-10-12 (the paper run vzkjqrys@2314240)
+    add_model_args(p)   # Tracktail model: default anonymous/tracktail-static@2026-10-12 (the paper run vzkjqrys@2314240)
     p.add_argument("--cotracker-ckpt", default=COTRACKER_CKPT)
     p.add_argument("--mvtracker-ckpt", default=MVTRACKER_CKPT)
     p.add_argument("--dust3r-ckpt", default=DUST3R_CKPT)
@@ -542,7 +542,7 @@ def main():
     sync(); gc.collect(); torch.cuda.empty_cache()
     weights_gb = gb(torch.cuda.memory_allocated())
     env = dict(host=socket.gethostname(), gpu=torch.cuda.get_device_name(device), torch=torch.__version__,
-               python=platform.python_version(), lsf_job=os.environ.get("LSB_JOBID"))
+               python=platform.python_version(), job_id=os.environ.get("SLURM_JOB_ID") or os.environ.get("LSB_JOBID"))
     print(f"[{args.method}] env {env}, weights {weights_gb} GB", flush=True)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
 

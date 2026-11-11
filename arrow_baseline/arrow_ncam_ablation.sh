@@ -15,7 +15,7 @@
 #   (default ABLATION_ROOT = $ARROW_OUT_BASE/ncam-ablation-dexycb).
 # Paths come from paper.env (TRACKTAIL_DATA, ARROW_CKPT, ARROW_PYTHON; ARROW's uv env: cd $ARROW_REPO && uv sync).
 # Env overrides: ABLATION_ROOT, DATASET_ROOT, DEVICE (default cuda:0), SCALE_MODE (gt-tracks | cameras), WINDOW,
-# MAX_ANCHORS, ARROW_PYTHON, CKPT. Runs locally; on a cluster wrap it in your scheduler (e.g. bsub ... bash arrow_ncam_ablation.sh).
+# MAX_ANCHORS, ARROW_PYTHON, CKPT. Runs locally.
 
 set -euo pipefail
 

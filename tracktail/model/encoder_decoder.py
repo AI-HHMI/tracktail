@@ -527,7 +527,7 @@ class QueryEncoder(nn.Module):
                 # The channel is a THREE-valued state {-1 unknown, 0 occluded, 1 visible} looked
                 # up in an Embedding(3) as value+1. forward asserts the tensor's SHAPE but not
                 # its value range, so a caller passing keypoint IDS down this channel (as
-                # posetail-pose did) silently clamped every id above 1 to 2. Make the misuse
+                # an earlier downstream caller did) silently clamped every id above 1 to 2. Make the misuse
                 # loud instead: reject values outside {-1, 0, 1}.
                 occ = occlusion.to(torch.long)
                 if (occ < -1).any() or (occ > 1).any():

@@ -3,7 +3,7 @@
 
 The paper reports 351M parameters: 308M (V-JEPA 2 video encoder) + 6M + 36M.
 
-    pixi run python scripts/count_params.py                      # ai-hhmi/tracktail-static @ 2026-10-12
+    pixi run python scripts/count_params.py                      # anonymous/tracktail-static @ 2026-10-12
     pixi run python scripts/count_params.py --revision main
     pixi run python scripts/count_params.py --checkpoint path/to/model.pth   # packaged checkpoint
     pixi run python scripts/count_params.py --checkpoint path/to/run_dir     # training run folder
@@ -51,7 +51,7 @@ def report(module, prefix, depth, total, out):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('--repo', default='ai-hhmi/tracktail-static')
+    p.add_argument('--repo', default='anonymous/tracktail-static')
     p.add_argument('--revision', default='2026-10-12')
     p.add_argument('--checkpoint', default=None, help='packaged model.pth or a training run folder (overrides --repo)')
     p.add_argument('--depth', type=int, default=1, help='submodule depth of the breakdown')

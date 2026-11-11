@@ -677,7 +677,7 @@ def load_model_from_hub(repo_id, device=None, revision=None, cache_dir=None, sub
     training sections because a packaged inference checkpoint does not need them.
 
     Args:
-        repo_id: Hugging Face repository ID, such as ``ai-hhmi/tracktail-static``.
+        repo_id: Hugging Face repository ID, such as ``anonymous/tracktail-static``.
         device: Device for the model. Defaults to CUDA when available.
         revision: Hub branch, commit, or date tag such as ``2026-10-12``.
         cache_dir: Optional Hugging Face cache directory.

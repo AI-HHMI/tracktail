@@ -9,7 +9,7 @@ Paper settings: Rat7M test trial `s5-d1/101500`, query frame 670, 360 frames (3 
    back-project with the Rat7M calibration and keep multi-view-consistent points.
    Alignment and fusion are repeated 3 times, then the cloud is voxel-downsampled (paper: 5,668 points).
 2. **Track** (`--stages track`): track every cloud point with Tracktail
-   (`ai-hhmi/tracktail-static`, revision `2026-10-12`, from the Hugging Face Hub) for 360 frames.
+   (`anonymous/tracktail-static`, revision `2026-10-12`, from the Hugging Face Hub) for 360 frames.
 3. **Figure** (`--stages figure`): camera-view panels with trails, camera frustums, input grid, and 3D time-lapse renders.
    `render_timelapse.py` re-renders the time-lapse panel used on the right side of the cover with the paper settings
    (poses at 0, 0.95 and 2.1 s; 200 tracks).
@@ -37,7 +37,7 @@ pixi run python -m pip install --no-deps --target deps_cover \
 
 You need one Rat7M trial in the Tracktail trial layout (`metadata.yaml` with the calibration, plus `vid/<camera>.mp4`).
 Download Rat7M from the source ([Dunn et al. 2021](https://doi.org/10.6084/m9.figshare.c.5295370)).
-Convert it with [tracktail-preprocessing](https://github.com/AI-HHMI/tracktail-preprocessing) (tag `v1.0-paper`):
+Convert it with tracktail-preprocessing (companion repository, anonymized for review) (tag `v1.0-paper`):
 `pixi run python generate_processed_dataset.py --dataset rat7m --in RAW/rat7m --out <data> --seed 3`.
 Subject s5 is the test split, so the trial is at `<data>/rat7m/test/s5-d1/101500`.
 
@@ -69,4 +69,4 @@ Later stages read `cloud.npz` and `track.npz` from `--out-dir`.
 - The other `figure_rat7m.ipynb` panels (`rat7m_examples.pdf` and the `rat7m_with_tracks*.pdf` views) read the trial
   videos and a separate Tracktail prediction file, committed in tracktail-paper as `data/rat7m/tracktail_output.npz`.
   They are not part of the cover and this pipeline does not make them.
-- The final cover (`figures/cover_figure_draft_liliedit2.pdf` in the paper source) was assembled by hand from these panels in a vector editor.
+- The final cover (in the paper source) was assembled by hand from these panels in a vector editor.

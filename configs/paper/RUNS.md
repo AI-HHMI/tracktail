@@ -20,7 +20,7 @@ with all GPUs of one node (`--devices -1`).
 | Config | W&B run | Checkpoint (iteration) | GPUs | Wall time | Paper |
 |---|---|---|---|---|---|
 | `pretrain.toml` | `e25w9v86` | 799996 | 4× H100 80GB | 49 h | Pretrained model (Tab. ablations, reference row ✓✓ / Large / 512) |
-| `finetune.toml` | `vzkjqrys` | 2314240 | 8× H100 80GB | ~192 h (run start → checkpoint file) | **Tracktail (paper model)**, released as `ai-hhmi/tracktail-static` @ `2026-10-12`: all main results, PO, TAPVid-3D, ncams, survival, speed |
+| `finetune.toml` | `vzkjqrys` | 2314240 | 8× H100 80GB | ~192 h (run start → checkpoint file) | **Tracktail (paper model)**, released as `anonymous/tracktail-static` @ `2026-10-12`: all main results, PO, TAPVid-3D, ncams, survival, speed |
 | `ablation_cam_attn_off.toml` | `folhop3e` | 799996 | 4× H100 80GB | 46 h | Tab. ablation_camattn: camera self-attn ✗, temporal ✓ |
 | `ablation_temporal_attn_off.toml` | `b3de55ap` | 799996 | 4× H100 80GB | 46 h | Tab. ablation_camattn: camera ✓, temporal ✗ |
 | `ablation_cam_temporal_attn_off.toml` | `cnmw9dcf` | 799996 | 4× H100 80GB | 44 h | Tab. ablation_camattn: camera ✗, temporal ✗ |
@@ -45,7 +45,7 @@ configs, or use the committed result summaries in tracktail-paper (`data/`) for 
    loads weights only, fresh optimizer), whole encoder unfrozen with `encoder_lr_scale = 0.25`,
    Kubric upweighted 3× (`[dataset.train.dataset_weights]`), Huber δ = 6, seed 0.
    `n_iterations` is 8M but the run was stopped by hand; the paper model is checkpoint
-   2314240 (`ai-hhmi/tracktail-static` revision `2026-10-12`, packaged eval weights).
+   2314240 (`anonymous/tracktail-static` revision `2026-10-12`, packaged eval weights).
 3. Ablations: copies of `pretrain.toml` with one model key changed (and val/test
    `n_frames = 16`, validation only). Evaluated at checkpoint 799996, like the pretrain row.
 

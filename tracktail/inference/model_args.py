@@ -6,12 +6,12 @@ Sources, in order of precedence:
                                                (model_state + model_config), or a raw training
                                                checkpoint together with its training config
   --hf-repo REPO [--revision REV] [--subfolder DIR]   a packaged checkpoint on the Hugging Face Hub
-The default is the paper model, ai-hhmi/tracktail-static at revision 2026-10-12.
+The default is the paper model, anonymous/tracktail-static at revision 2026-10-12.
 """
 
 import os
 
-PAPER_HF_REPO = 'ai-hhmi/tracktail-static'
+PAPER_HF_REPO = 'anonymous/tracktail-static'
 PAPER_HF_REVISION = '2026-10-12'
 
 

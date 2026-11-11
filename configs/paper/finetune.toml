@@ -8,11 +8,11 @@
 # Learning rate: train.py multiplies learning_rate by sqrt(world_size). The paper LR is
 #   9e-5 * sqrt(8) = 2.5e-4. With a different GPU count, set learning_rate = paper_lr / sqrt(n_gpus).
 # Stop: n_iterations is 8000000 but the run was stopped; the paper model is checkpoint 2314240
-#   (= ai-hhmi/tracktail-static revision 2026-10-12). Kubric is upweighted 3x (dataset_weights).
+#   (= anonymous/tracktail-static revision 2026-10-12). Kubric is upweighted 3x (dataset_weights).
 # Initialized from the pretrain model (checkpoint_path, finetune = true -> weights only, fresh optimizer).
 
 [wandb]
-project_name = 'tracktail-paper'   # W&B project (the paper runs logged to the on-disk project posetail-pretraining-v6)
+project_name = 'tracktail-paper'   # W&B project
 path = '${TRACKTAIL_RESULTS}/training'
 mode = 'online' # 'online', 'offline', 'disabled'
 

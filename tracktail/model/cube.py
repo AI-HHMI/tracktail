@@ -83,7 +83,7 @@ def project_cam(cam, p3d_t, downsample_factor = 1, max_normalized = 3.0):
     # p3d_t = torch.as_tensor(p3d)
     # ext_t = torch.as_tensor(cam.get_extrinsics_mat(), dtype=p3d_t.dtype, device=p3d_t.device)
     # mat_t = torch.as_tensor(cam.get_camera_matrix(), dtype=p3d_t.dtype, device=p3d_t.device)
-    # float64: the extrinsic matmul forms ~camera-distance (~6.5e5, far rigs like johnson-fly) coords;
+    # float64: the extrinsic matmul forms ~camera-distance (~6.5e5, far camera rigs) coords;
     # reduced-precision float32 matmul ('high'/'medium') rounds away the pixel-scale signal. float64 stays exact.
     in_dtype = p3d_t.dtype
     ext_t = cam['ext'].to(torch.float64)
@@ -254,7 +254,7 @@ def triangulate_simple_batch_reg(points, camera_mats, weights):
 
     # Run the geometry in float64. The recentring below keeps `b` small, but the design-matrix
     # products (c_world, MtM, Mtb) still multiply ~camera-distance-magnitude quantities (~6.5e5
-    # for far cameras like johnson-fly); under reduced-precision float32 matmul
+    # for far cameras); under reduced-precision float32 matmul
     # (set_float32_matmul_precision('medium'/'high'), esp. on Blackwell) those GEMMs round the
     # signal away and the triangulation collapses (tri error ~1e4). float64 GEMMs have no
     # bf16/TF32 tensor-core path, so they stay exact regardless of the global setting. Cost is
@@ -266,7 +266,7 @@ def triangulate_simple_batch_reg(points, camera_mats, weights):
 
     # Run the geometry in float64. The recentring below keeps `b` small, but the design-matrix
     # products (c_world, MtM, Mtb) still multiply ~camera-distance-magnitude quantities (~6.5e5
-    # for far cameras like johnson-fly); under reduced-precision float32 matmul
+    # for far cameras); under reduced-precision float32 matmul
     # (set_float32_matmul_precision('medium'/'high'), esp. on Blackwell) those GEMMs round the
     # signal away and the triangulation collapses (tri error ~1e4). float64 GEMMs have no
     # bf16/TF32 tensor-core path, so they stay exact regardless of the global setting. Cost is
@@ -280,7 +280,7 @@ def triangulate_simple_batch_reg(points, camera_mats, weights):
     # [X,Y,Z,W] / W. The homogeneous form divides by W, which collapses toward 0 whenever the
     # scene sits far from the world origin (W ~ 1/|coord|) or the geometry is ill-conditioned
     # (small-baseline stereo far from the scene) -> the triangulated point blows up by orders of
-    # magnitude (3d_triangulate exploded for allen/johnson(-fly)/3dpop/cmu, and for any
+    # magnitude (3d_triangulate exploded for several far-camera datasets, and for any
     # far-away-stereo pair). The inhomogeneous form has no such divide: the world-origin offset
     # lands entirely in the RHS `b` (out of the design matrix `M`), so conditioning is
     # origin-independent, and ill-conditioned depth stays bounded by the eps regularization

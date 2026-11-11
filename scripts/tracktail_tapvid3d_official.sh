@@ -5,19 +5,17 @@
 # (time-reversed video), every frame scored with the official TAPVid-3D metric (scripts/tapvid3d_official_metrics.py:
 # depth-adaptive 1-16 px thresholds at 256 px, per-video median scaling; also without scaling, tracktail being metric).
 #
-# Run here (default):      DEVICE=cuda:0 bash scripts/tracktail_tapvid3d_official.sh [dataset ...]
-# Submit to LSF instead:   SUBMIT=1 bash scripts/tracktail_tapvid3d_official.sh [dataset ...]   (one job per dataset)
+# Usage: DEVICE=cuda:0 bash scripts/tracktail_tapvid3d_official.sh [dataset ...]
 # Paper protocol: QUERY_OCC=unknown (default), VIS_THRESH=0.1 (default), SPLIT=minival (default).
 # Env: VIS_THRESH (default 0.1) visibility threshold for inference and scoring (folder suffix _vis<thr>);
 #      GT_POSES=1 gives tracktail the ground-truth camera poses (DriveTrack/ADT only; folder _gtposes);
 #      MAX_FRAMES=48 for the D4RT short-clip setting (separate output folder _first48);
 #      SPLIT=minival (default, 50 videos per dataset as in the papers) | full; NAME (a network of scripts/paper_common.sh),
-#      TRACKTAIL_OUT_BASE, QUEUE, WALL.
-# Predictions in $OUT/<dataset>/ are reused (resubmit a job that hit its time limit).
+#      TRACKTAIL_OUT_BASE.
+# Predictions in $OUT/<dataset>/ are reused (rerun after an interruption).
 
 REPO=${REPO:-"$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"}
 source "$REPO/scripts/paper_common.sh"
-LOGS=${LOGS:-$TRACKTAIL_LOGS}
 
 NAME=${NAME:-main_finetune_vzkjqrys}
 SPLIT=${SPLIT:-minival}
@@ -28,26 +26,9 @@ VIS_THRESH=${VIS_THRESH:-0.1}   # visibility threshold in inference (occlusion c
 SUFFIX=$([[ -n "$MAX_FRAMES" ]] && echo "_first${MAX_FRAMES}")$([[ -n "$GT_POSES" ]] && echo "_gtposes")_vis${VIS_THRESH}$([[ "$QUERY_OCC" == "unknown" ]] && echo "_occunk")
 OUT=${OUT:-$TRACKTAIL_OUT_BASE/${NAME}_tapvid3d_official_${SPLIT}${SUFFIX}}
 DATASETS="tapvid3d_pstudio tapvid3d_drivetrack tapvid3d_adt"
-QUEUE=${QUEUE:-gpu_h100}
-WALL=${WALL:-24:00}
 
-if [[ "$1" != "--worker" ]]; then
-    SELF="$REPO/scripts/$(basename "${BASH_SOURCE[0]}")"
-    if [[ -z "${SUBMIT:-}" ]]; then exec bash "$SELF" --worker ${@:-$DATASETS}; fi
-    mkdir -p "$LOGS"
-    for DS in ${@:-$DATASETS}; do   # one job per dataset
-        J="${NAME}_${DS}_official_${SPLIT}${SUFFIX}"
-        CMD="env NAME=$NAME SPLIT=$SPLIT MAX_FRAMES=$MAX_FRAMES GT_POSES=$GT_POSES VIS_THRESH=$VIS_THRESH QUERY_OCC=$QUERY_OCC OUT=$OUT REPO=$REPO bash $SELF --worker $DS"
-        command -v bsub >/dev/null 2>&1 || { echo "SUBMIT=1 needs LSF (bsub)"; exit 1; }
-        bsub -J "$J" -W "$WALL" -e "$LOGS/$J-%J.err" -o "$LOGS/$J-%J.out" -n 8 -q "$QUEUE" -gpu "num=1" $CMD
-    done
-    echo "logs: $LOGS   results: $OUT"
-    exit 0
-fi
-
-# ---------------- worker ----------------
 set -e
-shift
+[[ $# -eq 0 ]] && set -- $DATASETS
 cd "$REPO"
 PYTHON=$PIXI_PYTHON
 
