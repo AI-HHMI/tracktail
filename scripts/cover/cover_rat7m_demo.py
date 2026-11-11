@@ -1,12 +1,12 @@
 """Figure 1 (cover) qualitative demo on rat7m: dense rat point cloud -> Tracktail -> trajectory panels.
 
 Stages (all run by default; `--stages` picks a subset, later stages reuse earlier outputs in --out-dir):
-  cloud   initial 3D point cloud of the rat at the query frame, from VGGT depth + our calibration
+  cloud   initial 3D point cloud of the rat at the query frame, from VGGT depth + the Rat7M calibration
             1. masks:  median-background difference -> SAM ViT-L (box + 8 points) per camera
             2. hull:   voxel visual hull of the masks; its surface points are the initial anchors
             3. depth:  VGGT-1B on square crops around each mask (all cameras jointly)
             4. align:  each depth map -> camera z by a robust affine+plane fit to the visible anchors
-            5. fuse:   back-project with OUR K/dist/extrinsics; keep points inside all masks, not in front
+            5. fuse:   back-project with the dataset K/dist/extrinsics; keep points inside all masks, not in front
                        of any other view's depth (25 mm) and within 12 mm of >=2 other cameras' depth
             6. repeat 4-5 three times with the fused cloud as anchors; voxel-downsample to <= 6000 points
   track   track the cloud with Tracktail (anonymous/tracktail-static @ 2026-10-12) as 3D queries

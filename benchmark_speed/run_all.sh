@@ -36,7 +36,7 @@ for METHOD in $METHODS; do
                 LD_LIBRARY_PATH="$REPO/.pixi/envs/default/lib:${LD_LIBRARY_PATH:-}" \
                 "$PIXI_PY" "$HERE/bench.py" --method $METHOD --out "$OUT_DIR/$METHOD.jsonl" $BENCH_ARGS ;;
         mvtracker-gt|mvtracker-dust3r)
-            # The env libicui18n needs CXXABI_1.3.15; nodes otherwise resolve the older system libstdc++.
+            # The env libicui18n needs CXXABI_1.3.15; some systems otherwise resolve an older system libstdc++.
             # This is the runtime-library setup from conda activation, applied directly to avoid libmamba
             # cache parse failures when both benchmark methods are launched at once.
             env PYTHONPATH="$MVTRACKER_REPO:$DUST3R_REPO" \

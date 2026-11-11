@@ -16,12 +16,13 @@ Writes <ablation_root>/ncam_ablation_summary.csv with an n_views column prepende
 """
 
 import json
+import os
 import sys
 import re
 from pathlib import Path
 import pandas as pd
 
-root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.home() / "cotracker-baseline/cotracker-outputs-ncam-ablation-dexycb"
+root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(os.environ["COTRACKER_OUT_BASE"]) / "ncam-ablation-dexycb"
 
 rows = []
 for d in sorted(root.iterdir()):

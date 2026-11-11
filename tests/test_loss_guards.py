@@ -1,4 +1,4 @@
-"""Loss-side guards: the vis pair validation (item 12) and SmoothnessLoss degradation (item 18)."""
+"""Loss-side guards: the vis pair validation and SmoothnessLoss degradation."""
 import pytest
 import torch
 
@@ -50,7 +50,7 @@ def test_vis_pair_both_none_does_not_raise():
 
 
 # --------------------------------------------------------------------------------------
-# item 18: SmoothnessLoss degrades instead of raising on short windows
+# SmoothnessLoss degrades instead of raising on short windows
 # --------------------------------------------------------------------------------------
 
 def test_smoothness_short_window_degrades_to_first_difference():

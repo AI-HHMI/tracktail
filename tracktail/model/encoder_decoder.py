@@ -1195,7 +1195,7 @@ class Decoder(nn.Module):
         # scale = scale_init at start (no-op when scale_init=1), so learnable_scale is a
         # clean superset of the base mode. The metric regression loss learns the scale
         # through the product; the grid CE (with the scale detached in its target) shapes
-        # the normalized grid — jointly identifiable (see plan / Toy J).
+        # the normalized grid — jointly identifiable.
         if self.learnable_scale:
             self.scale_3d_head = _make_heads(1)
             for m in range(2):

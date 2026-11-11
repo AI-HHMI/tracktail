@@ -19,7 +19,7 @@ dataset (the exact fork+numpy mechanism the real dataset relies on) and confirm 
 Two ranks are simulated as two subprocesses, each running `set_seeds`-equivalent seeding
 with the SAME seed -- exactly what happens across GPUs under DDP.
 
-Run:  pixi run python parity_check/test_worker_rng_decorrelation.py
+Run:  pixi run python tests/test_worker_rng_decorrelation.py
 """
 
 import os

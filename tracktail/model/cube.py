@@ -258,7 +258,7 @@ def triangulate_simple_batch_reg(points, camera_mats, weights):
     # (set_float32_matmul_precision('medium'/'high'), esp. on Blackwell) those GEMMs round the
     # signal away and the triangulation collapses (tri error ~1e4). float64 GEMMs have no
     # bf16/TF32 tensor-core path, so they stay exact regardless of the global setting. Cost is
-    # negligible for a per-point 3x3 solve. See scripts/precision_sim.py.
+    # negligible for a per-point 3x3 solve.
     in_dtype = points.dtype
     points = points.to(torch.float64)
     camera_mats = camera_mats.to(torch.float64)
@@ -270,7 +270,7 @@ def triangulate_simple_batch_reg(points, camera_mats, weights):
     # (set_float32_matmul_precision('medium'/'high'), esp. on Blackwell) those GEMMs round the
     # signal away and the triangulation collapses (tri error ~1e4). float64 GEMMs have no
     # bf16/TF32 tensor-core path, so they stay exact regardless of the global setting. Cost is
-    # negligible for a per-point 3x3 solve. See scripts/precision_sim.py.
+    # negligible for a per-point 3x3 solve.
     in_dtype = points.dtype
     points = points.to(torch.float64)
     camera_mats = camera_mats.to(torch.float64)

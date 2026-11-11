@@ -39,7 +39,6 @@ import gc
 import json
 import os
 import platform
-import socket
 import sys
 import time
 from pathlib import Path
@@ -541,8 +540,8 @@ def main():
     m.set_clip(clip)
     sync(); gc.collect(); torch.cuda.empty_cache()
     weights_gb = gb(torch.cuda.memory_allocated())
-    env = dict(host=socket.gethostname(), gpu=torch.cuda.get_device_name(device), torch=torch.__version__,
-               python=platform.python_version(), job_id=os.environ.get("SLURM_JOB_ID") or os.environ.get("LSB_JOBID"))
+    env = dict(gpu=torch.cuda.get_device_name(device), torch=torch.__version__,
+               python=platform.python_version())
     print(f"[{args.method}] env {env}, weights {weights_gb} GB", flush=True)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
 

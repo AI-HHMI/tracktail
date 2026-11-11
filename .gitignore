@@ -172,9 +172,6 @@ cython_debug/
 
 .vscode
 
-# for codeocean development
-.codeocean/
-environment/
 data/
 metadata/
 _deprecated/
@@ -203,7 +200,7 @@ tests/new*/
 # benchmark scratch runs (only the paper's results dir is tracked)
 benchmark_speed/results/*
 !benchmark_speed/results/a100_mvtracker_20261026_133500/
-benchmark_speed/results/*/lsf/
+benchmark_speed/results/*/*/
 
 plans/
 dev/

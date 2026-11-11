@@ -13,7 +13,7 @@ machine-specific values replaced by environment variables (expanded at load time
 Set them with `source paper.env` (repo root). The `run_id` / `run_dir` keys that train.py
 writes into the saved config were removed.
 
-All runs used code commit `462eda2` (an ancestor of this branch) and were launched as
+All runs used the code in this repository (an earlier commit with the same model and training code) and were launched as
 `pixi run python train.py --config-path <cfg> --num-nodes 1 --precision 32 --strategy ddp_find_unused_parameters_true`
 with all GPUs of one node (`--devices -1`).
 
@@ -32,7 +32,7 @@ with all GPUs of one node (`--devices -1`).
 
 Wall time is W&B `_runtime` (pretrain/ablations stopped at `n_iterations` = 800k). The finetune
 run has no W&B summary; its time is the gap between run start and the checkpoint file and may
-include queue restarts.
+include job restarts.
 
 Only the paper model is released. The pretrain and ablation models are not: train them with these
 configs, or use the committed result summaries in tracktail-paper (`data/`) for the ablation tables.

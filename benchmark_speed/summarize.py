@@ -32,8 +32,7 @@ def main():
                                   sorted(set(df["method"]) - set(METHOD_ORDER)))
     df = df.sort_values(["method", "views", "kpts"])
     cols = [c for c in ["method", "views", "kpts", "view_note", "n_frames", "status", "fps", "sec", "peak_alloc_gb",
-                        "peak_reserved_gb", "weights_gb", "stage_fps", "dust3r_fps", "dust3r_peak_alloc_gb", "gpu",
-                        "host"] if c in df]
+                        "peak_reserved_gb", "weights_gb", "stage_fps", "dust3r_fps", "dust3r_peak_alloc_gb", "gpu"] if c in df]
     df[cols].to_csv(out / "summary.csv", index=False)
 
     def cell(r, key, fmt):

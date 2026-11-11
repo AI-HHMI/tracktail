@@ -1,4 +1,4 @@
-"""Item 10: moving-camera inference loads per-frame extrinsics instead of silently going static."""
+"""Moving-camera inference loads per-frame extrinsics instead of silently going static."""
 import os
 import tempfile
 

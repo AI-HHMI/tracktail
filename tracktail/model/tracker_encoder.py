@@ -911,7 +911,7 @@ class TrackerEncoder(nn.Module):
             # is exactly  rays_c_inv @ (residual + rays_c @ query_world)  but never forms the
             # absolute ray-local coordinate (~camera distance; ~6.5e5 for far
             # cameras), whose magnitude annihilates the ~pixel-scale residual under
-            # reduced-precision matmul (TF32/bf16). See scripts/precision_sim.py.
+            # reduced-precision matmul (TF32/bf16).
             points_3d_all_direct = query_world + einsum(
                 rays_c_inv[..., :3, :3], p3d_cams,
                 'cams i j, cams b t n j -> cams b t n i')
@@ -979,7 +979,7 @@ class TrackerEncoder(nn.Module):
                 # learnable_scale: the forward multiplied the (residual) output by the decoded
                 # per-track scale s3d [and depth by sdep]. The loss divides the grid CE target
                 # by the DETACHED scale so CE shapes the normalized grid while the metric
-                # regression loss learns the scale (identifiability, Toy J).
+                # regression loss learns the scale (identifiability).
                 'learnable_scale': self.learnable_scale,
                 's3d': s3d.detach() if s3d is not None else None,      # (cams,b,t,n)
                 'sdep': sdep.detach() if sdep is not None else None,   # (cams,b,t,n)

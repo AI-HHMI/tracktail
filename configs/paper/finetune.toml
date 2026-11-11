@@ -1,5 +1,5 @@
 # Paper run vzkjqrys (finetune). Exact copy of the W&B files/config.toml of run
-# run-20260912_115732-vzkjqrys, with private paths replaced by environment variables
+# run-20260912_115732-vzkjqrys, with local paths replaced by environment variables
 # (expanded by tracktail.model.train_utils.load_config; see configs/paper/RUNS.md):
 #   TRACKTAIL_DATA     dataset root (kubric-multiview/, point-odyssey-human/, po-animal-sub256-motion/, ...)
 #   TRACKTAIL_RESULTS  output root; W&B runs and checkpoints go to $TRACKTAIL_RESULTS/training

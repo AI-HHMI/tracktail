@@ -33,8 +33,6 @@ classifiers = [
     'Programming Language :: Python :: 3'
 ]
 
-[project.urls]
-
 [tool.setuptools]
 # `tracktail` (a real package via tracktail/__init__.py) plus its subpackages — including
 # `tracktail.model` (with train_utils) and `tracktail.inference` (with inference_utils) —
