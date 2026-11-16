@@ -731,8 +731,10 @@ def format_camera(cam, offset_dict, cam_type, device, ext_override=None):
     'dist', 'size', 'offset') are time-invariant either way. A 'moving' bool records
     which representation this dict carries so downstream code can branch cheaply.
     """
+    # aniposelib-pytorch cameras hold float64 nn.Parameters: detach so the dict tensors are
+    # plain float32 data (as with the numpy cameras of classic aniposelib).
     if ext_override is None:
-        ext = torch.as_tensor(cam.get_extrinsics_mat(), device=device, dtype=torch.float)
+        ext = cam.get_extrinsics_mat().detach().to(device=device, dtype=torch.float)
     else:
         ext = torch.as_tensor(ext_override, device=device, dtype=torch.float)  # (T,4,4)
 
@@ -740,8 +742,8 @@ def format_camera(cam, offset_dict, cam_type, device, ext_override=None):
         'name': cam.get_name(),
         'type': cam_type, # pinhole, fisheye
         'ext': ext,
-        'mat': torch.as_tensor(cam.get_camera_matrix(), device = device, dtype = torch.float),
-        'dist': torch.as_tensor(cam.dist, device = device, dtype = torch.float),
+        'mat': cam.get_camera_matrix().detach().to(device = device, dtype = torch.float),
+        'dist': cam.get_distortions().detach().to(device = device, dtype = torch.float),
         'size': torch.as_tensor(cam.get_size(), device = device, dtype = torch.int),
     }
 

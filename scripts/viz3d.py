@@ -10,10 +10,9 @@ import rerun as rr
 from einops import rearrange
 from matplotlib.colors import to_rgb
 
-from aniposelib.cameras import Camera, CameraGroup, FisheyeCamera
 
 from tracktail.inference.inference_utils import *
-from tracktail.datasets.utils import get_dirs, load_yaml, disassemble_extrinsics
+from tracktail.datasets.utils import get_dirs, load_yaml, load_camera_metadata
 
 
 def format_scheme(scheme, keypoint_names):
@@ -398,36 +397,15 @@ def build_cgroup(metadata, cam_names = None):
     matching the cam_names_used / video_paths stored in an output.npz (which may
     be a numerically-sorted subset of the cameras when --n-views was used).
     '''
-    cam_type = metadata.get('cam_type') or 'pinhole'
-
-    if cam_names is None:
-        cam_names = list(metadata['intrinsic_matrices'].keys())
-        if all(str(c).isdigit() for c in cam_names):
-            cam_names = sorted(cam_names, key = int)
-        else:
-            cam_names = sorted(cam_names)
-
-    cam_objs = []
-    for cam_name in cam_names:
-
-        intrinsics = metadata['intrinsic_matrices'][cam_name]
-        extrinsics = metadata['extrinsic_matrices'][cam_name]
-        distortions = metadata['distortion_matrices'][cam_name]
-        rvec, tvec = disassemble_extrinsics(extrinsics)
-        tvec = np.asarray(tvec).reshape(3, 1)
-
-        cam_cls = FisheyeCamera if cam_type == 'fisheye' else Camera
-        cam_objs.append(cam_cls(matrix = intrinsics, dist = distortions,
-                                rvec = rvec, tvec = tvec, name = str(cam_name)))
-
-    return CameraGroup(cam_objs)
+    fisheye = (metadata.get('cam_type') or 'pinhole') == 'fisheye'
+    return load_camera_metadata(metadata, cam_names = cam_names, fisheye = fisheye)[0]
 
 
 def project_to_cameras(cgroup, coords_3d):
     '''
     project (T, K, 3) world coordinates to (C, T, K, 2) pixel coordinates for
     every camera in cgroup. NaN/inf 3D points are projected as NaN (so they can
-    be masked out at draw time) rather than crashing cv2.projectPoints.
+    be masked out at draw time).
     '''
     T, K, _ = coords_3d.shape
     flat = coords_3d.reshape(-1, 3)

@@ -8,11 +8,12 @@ from torch.utils.data import Dataset, DistributedSampler
 import numpy as np
 import pandas as pd 
 
-from aniposelib.cameras import CameraGroup, Camera
 from easydict import EasyDict as edict
 from einops import rearrange
 
-from tracktail.datasets.utils import get_dirs, load_yaml, disassemble_extrinsics, format_sample_input
+from aniposelib.cameras import rodrigues
+
+from tracktail.datasets.utils import get_dirs, load_yaml, load_camera_metadata, format_sample_input
 
 from tracktail.model.cube import project_points_torch, is_point_visible, get_camera_scale
 from tracktail.model.train_utils import format_camera_group, dict_to_device
@@ -1610,8 +1611,8 @@ class TracktailDataset(Dataset):
     def rotate_camera_group(self, cgroup, coords):
                 
         rvec = np.random.uniform(-2*np.pi, 2*np.pi, size=3)
-        rotmat, _ = cv2.Rodrigues(np.array(rvec))
-        rotmat = torch.as_tensor(rotmat, device=coords.device, dtype=coords.dtype)
+        rotmat = rodrigues(torch.as_tensor(rvec, dtype=torch.float64))
+        rotmat = rotmat.to(device=coords.device, dtype=coords.dtype)
         coords = torch.matmul(coords, rotmat)
 
         rmat = torch.eye(4, device=coords.device, dtype=coords.dtype)
@@ -1796,78 +1797,7 @@ class TracktailDataset(Dataset):
         return np.random.random() < self.moving_cam_aug_prob
 
     def _load_cameras(self, camera_metadata_path):
-
-        cam_metadata = load_yaml(camera_metadata_path)
-        offset_dict = None
-        cam_type = 'pinhole'
-
-        intrinsics_dict = cam_metadata['intrinsic_matrices']
-        extrinsics_dict = cam_metadata['extrinsic_matrices']
-        distortions_dict = cam_metadata['distortion_matrices']
-        heights_dict = cam_metadata['camera_heights']
-        widths_dict = cam_metadata['camera_widths']
-
-        if 'offset_dict' in cam_metadata: 
-            offset_dict = cam_metadata['offset_dict']
-
-        if 'cam_type' in cam_metadata: 
-            cam_type = cam_metadata['cam_type']
-
-        # sort camera names either numerically or alphabetically
-        cam_names = list(intrinsics_dict.keys())
-
-        if all(cam_name.isdigit() for cam_name in cam_names):
-            cam_names = sorted(cam_names, key = int)
-        else:
-            cam_names = sorted(cam_names)
-
-        # moving cameras: per-frame extrinsics. Intrinsics/distortion are time-invariant,
-        # so the aniposelib Camera is built from the frame-0 pose (used for intrinsics and
-        # as the static fallback); the full (T,4,4) extrinsics are returned separately.
-        moving = bool(cam_metadata.get('moving_cams', False))
-        moving_ext = {} if moving else None
-
-        cams = []
-
-        for cam_name in cam_names:
-
-            ext_raw = extrinsics_dict[cam_name]
-            mat_raw = intrinsics_dict[cam_name]
-            dist_raw = distortions_dict[cam_name]
-            if moving:
-                ext_full = np.asarray(ext_raw, dtype=np.float64)  # (T,4,4)
-                if ext_full.ndim != 3 or ext_full.shape[-2:] != (4, 4):
-                    raise ValueError(
-                        "moving_cams=true but extrinsics for %s have shape %s (expected (T,4,4))"
-                        % (cam_name, tuple(ext_full.shape)))
-                moving_ext[cam_name] = ext_full
-                rvec, tvec = disassemble_extrinsics(ext_full[0])
-                # intrinsics/distortion are stored per-frame too (but are time-invariant,
-                # per Step 0); collapse to frame 0 for the (static) aniposelib Camera.
-                mat_arr = np.asarray(mat_raw, dtype=np.float64)
-                mat_raw = mat_arr[0] if mat_arr.ndim == 3 else mat_arr
-                dist_arr = np.asarray(dist_raw, dtype=np.float64)
-                dist_raw = dist_arr[0] if dist_arr.ndim == 2 else dist_arr
-            else:
-                rvec, tvec = disassemble_extrinsics(ext_raw)
-
-            cam = Camera(
-                matrix = mat_raw,
-                dist = dist_raw,
-                rvec = rvec,
-                tvec = tvec,
-                name = cam_name)
-
-            width = widths_dict[cam_name]
-            height = heights_dict[cam_name]
-            cam.set_size((width, height))
-            # cam.resize_camera(scale_dict[cam_name])
-            cams.append(cam)
-
-            # if offset_dict:
-            #     offsets = offset_dict[cam_name]
-            #     offset_dict[cam_name] = [offsets[0] * scale_dict[cam_name], offsets[1] * scale_dict[cam_name]]
-
-        cgroup = CameraGroup(cams)
-
-        return cgroup, offset_dict, cam_type, moving_ext
+        """(cgroup, offset_dict, cam_type, moving_ext) from a metadata.yaml; see
+        tracktail.datasets.utils.load_camera_metadata (moving cameras: frame-0 Camera,
+        full (T,4,4) extrinsics in moving_ext)."""
+        return load_camera_metadata(camera_metadata_path)

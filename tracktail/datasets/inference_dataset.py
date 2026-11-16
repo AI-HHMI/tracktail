@@ -10,11 +10,10 @@ from torch.utils.data import Dataset
 import numpy as np
 import pandas as pd 
 
-from aniposelib.cameras import CameraGroup, Camera
 from easydict import EasyDict as edict
 from einops import rearrange
 
-from tracktail.datasets.utils import get_dirs, load_yaml, disassemble_extrinsics, format_sample_input
+from tracktail.datasets.utils import get_dirs, load_yaml, load_camera_metadata, format_sample_input
 from tracktail.model.cube import project_points_torch, is_point_visible
 from tracktail.model.train_utils import format_camera_group, dict_to_device
 
@@ -397,56 +396,6 @@ class TracktailInferenceDataset(Dataset):
     
 
     def _load_cameras(self, camera_metadata_path):
-
-        cam_metadata = load_yaml(camera_metadata_path)
-        offset_dict = None
-        cam_type = 'pinhole'
-        moving = cam_metadata.get('moving_cams', False)
-
-        intrinsics_dict = cam_metadata['intrinsic_matrices']
-        extrinsics_dict = cam_metadata['extrinsic_matrices']
-        distortions_dict = cam_metadata['distortion_matrices']
-        heights_dict = cam_metadata['camera_heights']
-        widths_dict = cam_metadata['camera_widths']
-
-        if 'offset_dict' in cam_metadata:
-            offset_dict = cam_metadata['offset_dict']
-
-        if 'cam_type' in cam_metadata:
-            cam_type = cam_metadata['cam_type']
-
-        # sort camera names either numerically or alphabetically
-        cam_names = list(intrinsics_dict.keys())
-
-        if all(cam_name.isdigit() for cam_name in cam_names):
-            cam_names = sorted(cam_names, key = int)
-        else:
-            cam_names = sorted(cam_names)
-
-        cams = []
-
-        for cam_name in cam_names:
-
-            ext = extrinsics_dict[cam_name]
-            mat = intrinsics_dict[cam_name]
-            if moving:
-                ext = np.asarray(ext, dtype=np.float64)[0]
-                mat_arr = np.asarray(mat, dtype=np.float64)
-                mat = mat_arr[0] if mat_arr.ndim == 3 else mat_arr
-            rvec, tvec = disassemble_extrinsics(ext)
-
-            cam = Camera(
-                matrix = mat,
-                dist = distortions_dict[cam_name],
-                rvec = rvec,
-                tvec = tvec,
-                name = cam_name)
-
-            width = widths_dict[cam_name]
-            height = heights_dict[cam_name]
-            cam.set_size((width, height))
-            cams.append(cam)
-
-        cgroup = CameraGroup(cams)
-
-        return cgroup, offset_dict, cam_type
+        """(cgroup, offset_dict, cam_type) from a metadata.yaml. Moving cameras keep only the
+        frame-0 pose here (as before); see tracktail.datasets.utils.load_camera_metadata."""
+        return load_camera_metadata(camera_metadata_path)[:3]

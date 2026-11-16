@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "tracktail"
 version = "0.5.0"
 dependencies = [
-    "aniposelib>=0.7.0",
+    "aniposelib-pytorch>=1.1.0",
     "easydict==1.13",
     "einops==0.7.0",
     "opencv-python==4.9.0.80",
