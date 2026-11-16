@@ -9,13 +9,13 @@ dependencies = [
     "aniposelib-pytorch>=1.1.0",
     "easydict==1.13",
     "einops==0.7.0",
-    "opencv-python==4.9.0.80",
+    "opencv-python>=4.10.0.84",
     "toml==0.10.2",
     "tomlkit>=0.12",
     "wandb==0.19.5",
     "lightning>=2.5.6,<3",
     "rerun-sdk[notebook]<=0.22.1",
-    "numpy==1.26",
+    "numpy",
     "imgaug", "imagecorruptions",
     "setuptools<81",
     "schedulefree", "decord", "tqdm",
@@ -63,7 +63,7 @@ dev = {features = ["dev"], solve-group = "default"}
 [tool.pixi.dependencies]
 python = "3.11.*"
 cuda-toolkit = "12.8.*"
-numpy = "==1.26"
+numpy = "*"
 scipy = "<1.17"
 setuptools = "<81"
 pip = "*"

@@ -23,6 +23,20 @@ from pprint import pprint
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning, module='imagecorruptions')
 
+# imgaug 0.4.0 (unmaintained) and imagecorruptions use numpy aliases removed in numpy 2.
+# Restore them before importing imgaug.
+if not hasattr(np, 'sctypes'):
+    np.sctypes = {
+        'int': [np.int8, np.int16, np.int32, np.int64],
+        'uint': [np.uint8, np.uint16, np.uint32, np.uint64],
+        'float': [np.float16, np.float32, np.float64],
+        'complex': [np.complex64, np.complex128],
+        'others': [bool, object, bytes, str, np.void],
+    }
+for _name, _alias in (('complex', complex), ('float_', np.float64)):
+    if not hasattr(np, _name):
+        setattr(np, _name, _alias)
+
 import imgaug.augmenters as iaa
 
 from concurrent.futures import ThreadPoolExecutor
