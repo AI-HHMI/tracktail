@@ -248,6 +248,20 @@ root of the number of GPUs. With the paper's GPU counts this gives 1e-3 for pret
 for finetuning. If you use a different number of GPUs, adjust `learning_rate` to keep the same
 product. Iteration counts in the configs are totals over all GPUs.
 
+**Training speed.** Training now defaults to bf16 autocast in the encoder and decoder plus a
+compiled encoder and a fused grad norm (`[training.speed]`, `tracktail/model/speed.py`; about 1.9x
+faster per step on an H100 with unchanged accuracy in a 1536-step check). `pretrain.toml` and
+`finetune.toml` also turn encoder activation checkpointing off (about 2.2x total, ~45 GB peak per
+H100 80GB). The paper's runs used fp32 eager with activation checkpointing; to match them exactly set
+`[training.speed] enabled = false` and `encoder_activation_checkpointing = true`. On CPU, or without
+bf16 / `torch.compile`, these steps are skipped.
+
+**Faster pose loading (optional).** `scripts/convert_pose_to_pq.py` writes a frame-chunked
+`pose3d.pq` next to each `pose3d.npz`, so a clip decompresses only the frames it uses (removes
+data-loading stalls on large trials). The dataset reads the `.pq` when present and falls back to the
+npz otherwise. `[dataset] prefetch_factor` (default 2) and `loader_in_order` (default true) tune the
+train loader.
+
 **Ablations.** Only the final model is released. To reproduce the ablation tables (camera and
 temporal attention, encoder size, latent size), train each `configs/paper/ablation_*.toml`. Each is the
 pretraining config with one setting changed. Then package the checkpoint and evaluate it:

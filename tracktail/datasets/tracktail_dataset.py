@@ -12,6 +12,7 @@ from aniposelib.cameras import CameraGroup, Camera
 from easydict import EasyDict as edict
 from einops import rearrange
 
+from tracktail.datasets.pose_store import load_pose_clip, load_pose_full
 from tracktail.datasets.utils import get_dirs, load_yaml, disassemble_extrinsics, format_sample_input
 
 from tracktail.model.cube import project_points_torch, is_point_visible, get_camera_scale
@@ -264,8 +265,8 @@ def get_rows_trial(trial_path, n_frames, split, context):
         metadata_path = metadata_path if os.path.exists(metadata_path) else None
 
     # get starting indices
-    data = np.load(pose_path)
-    coords = torch.as_tensor(data['pose'])
+    # pose3d.pq (frame-chunked, optional) is read instead of the npz when present
+    coords = torch.as_tensor(load_pose_full(pose_path))
 
     coords = rearrange(coords, 's t n r -> t (s n) r') # (time, n_kpts, r)
     # total frames available in this trial; lets get_item_actual reject a sampled
@@ -861,16 +862,16 @@ class TracktailDataset(Dataset):
         is_true_2d = (row['mode'] == '2d')
 
         # load keypoints
-        data = np.load(row['pose_path'])
-        coords = data['pose'][:, start_ix:end_ix:interval, :, :]
+        # load keypoints (+ visibilities if present; 2D datasets never have vis). Reads only this
+        # clip's frames from pose3d.pq when that file exists, else slices the npz.
+        coords, vis_np = load_pose_clip(row['pose_path'], start_ix, end_ix, interval,
+                                        with_vis=not is_true_2d)
         coords = torch.tensor(coords, dtype=torch.float32, device='cpu')
 
-        # load visibilities (if present; 2D datasets never have vis)
         vis = None
         vis_2d = None
-        if not is_true_2d and 'vis' in data:
-            vis = data['vis'][:, start_ix:end_ix:interval, :, :]
-            vis = torch.tensor(vis, dtype=torch.float32, device='cpu')
+        if vis_np is not None:
+            vis = torch.tensor(vis_np, dtype=torch.float32, device='cpu')
             vis_2d = vis.clone()
             vis[torch.isnan(vis)] = 1
             vis = vis.bool()
