@@ -7896,6 +7896,7 @@ packages:
   - decord
   - tqdm
   - huggingface-hub>=0.30
+  - pyarrow>=14
   requires_python: '>=3.11'
 - pypi: https://download-r2.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp311-cp311-manylinux_2_28_x86_64.whl
   name: torch
