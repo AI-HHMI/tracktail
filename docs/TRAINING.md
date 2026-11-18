@@ -32,6 +32,29 @@ Muon; losses; `checkpoint_path`/`finetune`), and `[wandb]`. Iteration counts are
 across all GPUs**. `train.py` multiplies the configured learning rate by the square root of the
 number of GPUs.
 
+## Training speed (on by default)
+`train.py` applies `[training.speed]` (`tracktail/model/speed.py`). With the section absent it
+uses bf16 autocast inside the encoder and decoder (fp32 handed back to heads, losses and camera
+geometry), `torch.compile` per encoder block, and a fused grad-norm log: ~1.9x faster per
+finetune step on an H100 with unchanged accuracy. Encoder activation checkpointing stays on in
+code; `config_tracktail_finetuning_v6.toml` turns it off (`encoder_activation_checkpointing =
+false`, ~2.2x total, ~45 GB peak per H100 80GB). On CPU, or without bf16 / `torch.compile`
+support, these steps are skipped and training runs in fp32 eager.
+
+Old behaviour (fp32, no compile, activation checkpointing on):
+```toml
+[training.speed]
+enabled = false
+encoder_activation_checkpointing = true
+```
+
+## Faster pose loading (optional `pose3d.pq`)
+`scripts/convert_pose_to_pq.py` writes a frame-chunked `pose3d.pq` next to each `pose3d.npz`, so a
+clip decompresses only the frames it uses (removes data-loading stalls on large trials). The
+dataset reads the `.pq` when present and falls back to the npz otherwise; the npz stays the
+source of truth. `[dataset] prefetch_factor` (default 2) and `loader_in_order` (default true)
+tune the train loader.
+
 ## Launching
 Config values like `${TRACKTAIL_DATA}` are read from the environment when the config is loaded.
 

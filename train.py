@@ -141,9 +141,12 @@ def run(config_path, fabric):
         sampler = sampler,
         shuffle = False,
         num_workers = config.dataset.num_workers,
-        prefetch_factor = 2,
+        prefetch_factor = config.dataset.get('prefetch_factor', 2),
         persistent_workers = True,
         pin_memory = True,
+        # False: hand over batches as they finish, so one slow sample doesn't stall the GPU
+        # (same samples, order not bit-reproducible). Default True = unchanged behaviour.
+        in_order = config.dataset.get('loader_in_order', True),
         # decorrelate dataloader RNG across (rank, worker): every rank runs
         # set_seeds with the same broadcast seed, and torch's per-worker seed is
         # rank-independent, so without this every GPU would apply correlated
@@ -222,6 +225,12 @@ def run(config_path, fabric):
     model_kwargs = ({**config.model, 'video_encoder_pretrained': False} if checkpoint_path
                     else config.model)
     model = TrackerEncoder(**model_kwargs)
+
+    # Speedups ([training.speed]; default on: bf16 autocast of encoder+decoder, compiled encoder
+    # blocks, fused grad norm; `enabled = false` restores fp32 eager). Skipped on CPU.
+    from tracktail.model.speed import apply_training_speedups
+    apply_training_speedups(model, config, device_type=fabric.device.type,
+                            verbose=fabric.is_global_zero)
 
     model = fabric.setup(model)
 
@@ -422,6 +431,15 @@ def run(config_path, fabric):
         train_sampler.set_epoch(epoch)
     train_iter = iter(train_loader)
 
+    # Optional torch.profiler capture (training.profile_dir set): trace + op tables of a few steps.
+    profile_dir = config.training.get('profile_dir', None) if fabric.is_global_zero else None
+    prof = None
+    if profile_dir:
+        from tracktail.model.speed import start_profiler
+        prof = start_profiler(model, profile_dir, wait=config.training.get('profile_wait', 30),
+                              active=config.training.get('profile_active', 6))
+    save_checkpoints = config.training.get('save_checkpoints', True)
+
     iter_time = time.time()
     global_i = start_iteration
     for i in range(iters_per_gpu):
@@ -485,6 +503,8 @@ def run(config_path, fabric):
         # log losses and eval metrics to wandb and print to console 
         if fabric.is_global_zero:
             result_dict['train/curriculum_intensity'] = train_dataset.curriculum_intensity()
+            result_dict['train/n_cams'] = len(batch.views)
+            result_dict['train/peak_mem_gb'] = torch.cuda.max_memory_allocated() / 2**30
             result_dict['train/iter_time'] = time.time() - iter_time
             result_dict['train/loader_time'] = ( result_dict['train/iter_time']
                                                  - result_dict['train/elapsed_time']
@@ -498,8 +518,10 @@ def run(config_path, fabric):
                 print(result_dict)
                 
         # save a model checkpoint when the condition is met
-        checkpoint_cond = ((i % checkpoint_freq == 0) or
-                           (i + 1 == iters_per_gpu))
+        checkpoint_cond = save_checkpoints and ((i % checkpoint_freq == 0) or
+                                                (i + 1 == iters_per_gpu))
+        if prof is not None:
+            prof.step()
 
         if checkpoint_cond and fabric.is_global_zero:
             ckpt_path = save_checkpoint(model, optimizer, prefix = exp_dir, i = global_i, config = config)
@@ -512,8 +534,12 @@ def run(config_path, fabric):
         train_loss.reset_history()
         val_loss.reset_history()
 
+    if prof is not None:
+        from tracktail.model.speed import finish_profiler
+        finish_profiler(prof, profile_dir, trace=bool(config.training.get('profile_trace', False)))
+
     # save checkpoint on interrupt
-    if interrupted and fabric.is_global_zero:
+    if interrupted and fabric.is_global_zero and save_checkpoints:
         ckpt_path = save_checkpoint(model, optimizer, prefix = exp_dir, i = global_i, config = config)
         if wandb.run is not None:
             wandb.run.summary['final_checkpoint'] = os.path.basename(ckpt_path)

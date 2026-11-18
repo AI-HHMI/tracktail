@@ -133,7 +133,9 @@ Python client.
 
 ## Training
 
-See [docs/TRAINING.md](docs/TRAINING.md). The configs behind the paper's model are on the
+See [docs/TRAINING.md](docs/TRAINING.md). Training now defaults to bf16 autocast in the encoder
+and decoder plus a compiled encoder (~1.9x faster on H100); `[training.speed] enabled = false`
+restores fp32 eager (see [Training speed](docs/TRAINING.md#training-speed-on-by-default)). The configs behind the paper's model are on the
 [`paper` branch](https://github.com/AI-HHMI/tracktail/tree/paper).
 
 ---

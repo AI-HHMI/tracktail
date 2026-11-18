@@ -26,6 +26,7 @@ from tracktail.model.eval_metrics import (get_eval_metrics, get_metrics_by_motio
 from tracktail.model.cube import get_camera_scale
 from tracktail.model.losses import get_vis_true, unroll_batch, normalize_by_mean_depth
 from tracktail.model.tracker_encoder import TrackerEncoder
+from tracktail.model.speed import speed_options
 
 
 def check_mode_3d(model_config):
@@ -849,26 +850,29 @@ def train_iteration(config, model, fabric, batch,
         model_kwargs['occlusion'] = getattr(batch, 'query_occlusion', None)
 
     # with fabric.autocast():
-    outputs = model(
-        views = list(views),
-        coords = query_coords,
-        query_times = query_times,
-        camera_group = cgroup,
-        **model_kwargs)
+    _rf = torch.profiler.record_function
+    with _rf('step/forward'):
+        outputs = model(
+            views = list(views),
+            coords = query_coords,
+            query_times = query_times,
+            camera_group = cgroup,
+            **model_kwargs)
 
     coords_pred = outputs['coords_pred']
     vis_pred = outputs['vis_pred']
 
     try:
-        total_loss = loss(
-            model = model, 
-            outputs = outputs,
-            coords_true = coords, 
-            vis_true = vis,
-            vis_true_cams = vis_2d,
-            cgroup = cgroup, 
-            p2d = p2d, 
-            device = coords_pred.device)
+        with _rf('step/loss'):
+            total_loss = loss(
+                model = model, 
+                outputs = outputs,
+                coords_true = coords, 
+                vis_true = vis,
+                vis_true_cams = vis_2d,
+                cgroup = cgroup, 
+                p2d = p2d, 
+                device = coords_pred.device)
     except ValueError as e:
         # Non-finite loss on THIS rank only. Raising here leaves the other DDP ranks blocked in
         # the gradient all-reduce until the 30-min NCCL watchdog kills the job, so instead
@@ -877,14 +881,22 @@ def train_iteration(config, model, fabric, batch,
         total_loss = sum(p.sum() for p in model.parameters() if p.requires_grad) * 0.0
         evaluate = False
 
-    fabric.backward(total_loss)
+    with _rf('step/backward'):
+        fabric.backward(total_loss)
 
     # Calculate gradient norm
-    grad_norm = 0.0
-    for p in model.parameters():
-        if p.grad is not None:
-            grad_norm += p.grad.detach().data.norm(2).item() ** 2
-    grad_norm = grad_norm ** 0.5
+    with _rf('step/grad_norm'):
+        if speed_options(config)['fused_grad_norm']:
+            # one device sync instead of one .item() per parameter (same value up to rounding)
+            grads = [p.grad.detach() for p in model.parameters() if p.grad is not None]
+            grad_norm = float(torch.linalg.vector_norm(
+                torch.stack(torch._foreach_norm(grads, 2)).double(), 2).item()) if grads else 0.0
+        else:
+            grad_norm = 0.0
+            for p in model.parameters():
+                if p.grad is not None:
+                    grad_norm += p.grad.detach().data.norm(2).item() ** 2
+            grad_norm = grad_norm ** 0.5
 
     # Track the learnable soft-argmax temperatures (exp of unclamped log-params). An upward
     # drift is the suspected driver of isolated grad-norm spikes; log so it can be confirmed
@@ -900,17 +912,18 @@ def train_iteration(config, model, fabric, batch,
     #                                error_if_nonfinite = False)
 
     try:
-        if hasattr(optimizer, '_opts'):
-            # DualOptimizer (muon+adamw): fabric.clip_gradients takes a single optimizer, so clip
-            # the model's grads directly (no AMP unscale needed at 32/bf16 precision).
-            torch.nn.utils.clip_grad_norm_(model.parameters(), config.training.max_grad_norm,
-                                           error_if_nonfinite=True)
-        else:
-            fabric.clip_gradients(model, optimizer,
-                max_norm = config.training.max_grad_norm,
-                error_if_nonfinite = True)
+        with _rf('step/optimizer'):
+            if hasattr(optimizer, '_opts'):
+                # DualOptimizer (muon+adamw): fabric.clip_gradients takes a single optimizer, so clip
+                # the model's grads directly (no AMP unscale needed at 32/bf16 precision).
+                torch.nn.utils.clip_grad_norm_(model.parameters(), config.training.max_grad_norm,
+                                               error_if_nonfinite=True)
+            else:
+                fabric.clip_gradients(model, optimizer,
+                    max_norm = config.training.max_grad_norm,
+                    error_if_nonfinite = True)
 
-        optimizer.step()
+            optimizer.step()
     except:
         print("ERROR BAD GRADIENTS!!!")
         print(batch.sample_info)

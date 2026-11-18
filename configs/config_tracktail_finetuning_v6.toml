@@ -171,6 +171,17 @@ val_freq = 128 # in iterations
 print_freq = 96 # in iterations
 debug_ix = -1 # only works for val
 
+# H100 speedups (tracktail/model/speed.py). bf16 autocast of encoder+decoder, compiled encoder
+# blocks and fused grad norm are the code defaults (~1.9x per step, accuracy unchanged in a
+# 1536-step check); this config also drops encoder activation checkpointing (~2.2x total, peak
+# ~45 GB on an H100 80GB). Old behaviour: enabled = false and encoder_activation_checkpointing = true.
+[training.speed]
+encoder_activation_checkpointing = false
+# enabled = true
+# autocast_bf16 = ['encoder', 'decoder']
+# compile = ['encoder']
+# fused_grad_norm = true
+
 [training.optimizer]
 # Decoder trains from scratch on the frozen backbone -> 5e-4 base LR (6i8ryveg). encoder_lr_scale
 # moot (encoder frozen).
