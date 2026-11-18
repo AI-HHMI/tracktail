@@ -316,7 +316,7 @@ def get_delta_x(coords_pred, coords_true, vis_true, threshold,
     else:
         within_thresh = dist2 < (threshold ** 2)
     good = within_thresh[..., None] & vis_true
-    delta_x = np.sum(good, axis = (0, 1, 2)) / np.sum(vis_true)
+    delta_x = float(np.sum(good) / np.sum(vis_true))
 
     return delta_x
 

@@ -180,6 +180,18 @@ def save_config(config_path, new_config_path, extra=None):
         f.write(tomlkit.dumps(doc))
         
         
+def _scalar_metric(name, v):
+    '''float() of a metric value. numpy>=2 refuses float() on 1-element arrays, so a
+    non-scalar value is converted via np.asarray (nan-meaned, with a warning if size != 1).'''
+    try:
+        return float(v)
+    except TypeError:
+        arr = np.asarray(v.detach().cpu() if torch.is_tensor(v) else v, dtype=float)
+        if arr.size != 1:
+            print(f'[warn] metric {name} is non-scalar (shape {arr.shape}); using nanmean')
+        return float(np.nanmean(arr)) if arr.size else float('nan')
+
+
 def write_json(json_path, results): 
     '''
     appends results to a json file
@@ -951,7 +963,7 @@ def train_iteration(config, model, fabric, batch,
         metrics = list(metric_dicts[0].keys())
 
         for metric in metrics:
-            metric_list = [float(metric_dict[metric]) for metric_dict in metric_dicts]
+            metric_list = [_scalar_metric(metric, metric_dict[metric]) for metric_dict in metric_dicts]
             avg_metrics_dict[f'{metric}_avg'] = float(np.mean(metric_list))
             # avg_metrics_dict[f'{metric}_std'] = float(np.std(metric_list))
 
@@ -1101,7 +1113,7 @@ def train_epoch(config, model, fabric, dataloader,
         metrics = list(metric_dicts[0].keys())
 
         for metric in metrics:
-            metric_list = [float(metric_dict[metric]) for metric_dict in metric_dicts]
+            metric_list = [_scalar_metric(metric, metric_dict[metric]) for metric_dict in metric_dicts]
             avg_metrics_dict[f'{metric}_avg'] = float(np.mean(metric_list))
             # avg_metrics_dict[f'{metric}_std'] = float(np.std(metric_list))
 
@@ -1137,7 +1149,7 @@ def average_metrics(dicts, prefix, name = None, nan_safe = False):
     std_fn = np.nanstd if nan_safe else np.std
     out = {}
     for metric in dicts[0].keys():
-        metric_list = [float(d[metric]) for d in dicts]
+        metric_list = [_scalar_metric(metric, d[metric]) for d in dicts]
         key = metric
         if name is not None:
             prefix_tag = prefix.rstrip('/')
