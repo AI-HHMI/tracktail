@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Tracktail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one calm column; the multi-view players are the only loud elements. Track colours (the spectrum strip) are the identity. */
+:root{
+  --bg:#ffffff; --panel:#ffffff; --panel2:#f1f2f4; --line:#dcdfe4;
+  --fg:#363636; --mute:#6b6f76; --accent:#3273dc; --accent-ink:#ffffff; --stage:#0b0e14;
+  --spectrum:linear-gradient(90deg,#ff33c4 0%,#b36cff 33%,#5e95ff 66%,#33eaff 100%);
+  --f-display:"Noto Sans",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --f-body:"Noto Sans",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --f-mono:"Noto Sans",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color-scheme:light;
+}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:400 16px/1.6 var(--f-body);margin:0;
+  padding-block:0;padding-left:0;padding-right:0}
+a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.wrap{max-width:1120px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.1;margin:0}
+h2{font-size:clamp(1.35rem,2.4vw,1.65rem);font-weight:500;letter-spacing:0;text-align:center}
+h3{font-size:1.15rem;font-weight:700}
+p{margin:0}
+.eyebrow{font:700 .72rem/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+section{padding-block:clamp(44px,7vw,84px)}
+section+section{border-top:1px solid var(--line)}
+.lede{color:var(--mute);max-width:70ch;margin:0 auto}
+.sec-head{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;margin-bottom:26px}
+
+/* nav */
+nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg)}
+nav .wrap{display:flex;align-items:center;gap:20px;height:52px;overflow-x:auto;white-space:nowrap}
+nav b{font:600 1.05rem var(--f-display);color:var(--fg);margin-right:auto}
+nav a{color:var(--mute);font-size:.86rem}
+nav a:hover{color:var(--fg);text-decoration:none}
+
+/* hero */
+.hero{padding-top:clamp(40px,6vw,76px);padding-bottom:clamp(28px,4vw,48px);text-align:center}
+.hero h1{font-size:clamp(1.55rem,3.4vw,2.2rem);font-weight:500;line-height:1.15;letter-spacing:0;max-width:34ch;margin:0 auto;text-wrap:balance}
+.hero .tag{font:400 clamp(1.05rem,2vw,1.25rem)/1.5 var(--f-body);color:var(--mute);max-width:46ch;margin:12px auto 0}
+.strip{height:4px;border-radius:2px;background:var(--spectrum);margin:24px auto;max-width:260px}
+.authors{font-size:1.02rem;line-height:1.7;max-width:62ch;margin:0 auto}
+.authors a,.authors span.n{color:var(--fg);white-space:nowrap}
+.authors sup{color:var(--mute);font-size:.7em;margin-left:1px}
+.affil{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 28px;margin-top:10px;color:var(--mute);font-size:.92rem}
+.venue{margin-top:14px;font:600 1rem var(--f-body)}
+.links{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-top:20px}
+.exgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0 26px}
+.exgrid .hl{font:600 .85rem var(--f-body);text-align:center;margin-bottom:6px;opacity:.7}
+.exgrid .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}
+.exgrid video{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;background:#000;border-radius:3px}
+@media(max-width:700px){.exgrid{grid-template-columns:1fr}}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:9px 20px;border-radius:999px;border:1px solid transparent;background:var(--fg);color:var(--bg);font:500 .95rem var(--f-body);cursor:pointer}
+.btn:hover{text-decoration:none;opacity:.88}
+.btn svg{width:16px;height:16px;fill:currentColor}
+.btn[aria-disabled="true"]{opacity:.4;pointer-events:none}
+.hero-demo{min-width:0;max-width:1088px;margin:36px auto 0;text-align:left}
+.stage{max-width:calc(var(--arn,1.78)*74vh);margin-inline:auto;width:100%}   /* single view: video height <= 74vh; the 2x2 grid has the same aspect as one view, so it is capped to the same height */
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:clamp(20px,4vw,56px);align-items:start}
+@media (max-width:900px){.two{grid-template-columns:minmax(0,1fr)}}
+
+/* demo player */
+.demo{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.demo-top{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+.group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.group label{font:600 .72rem var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.pill{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--fg);font:500 .84rem var(--f-body);padding:6px 12px;border-radius:999px;cursor:pointer}
+.pill:hover{border-color:var(--mute)}
+.pill[aria-pressed="true"],.pill[aria-selected="true"]{font-weight:600;background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.stage{background:var(--stage);position:relative;display:grid;gap:2px;grid-template-columns:1fr}
+.stage.grid{grid-template-columns:1fr 1fr}
+.cell{position:relative;background:#000;aspect-ratio:var(--ar,16/9);overflow:hidden;display:none}
+.cell.on{display:block}
+.cell video,.cell canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.cell video{object-fit:fill}
+.cell .tagv{position:absolute;left:8px;top:8px;font:500 .68rem var(--f-body);letter-spacing:.06em;color:#fff;background:rgba(0,0,0,.55);padding:3px 7px;border-radius:5px;pointer-events:none}
+.stage:not(.grid) .cell .tagv{display:none}
+.stage.single{max-width:100%}
+.demo-body{display:grid;grid-template-columns:minmax(0,1fr);background:var(--stage);gap:2px}
+.demo-body.has3d{grid-template-columns:var(--cols,minmax(0,5fr) minmax(0,3fr))}
+.demo-body.has3d .stage{max-width:none;margin:0}
+.demo-body.has3d.stack{grid-template-columns:minmax(0,1fr)}
+.demo-body.has3d.stack .v3d{height:clamp(260px,32vw,350px)}
+.v3d{position:relative;background:radial-gradient(120% 100% at 50% 40%,#161b27,#07090e);min-height:260px;cursor:grab;touch-action:none}
+.v3d:active{cursor:grabbing}
+.v3d canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.v3d .zoomb{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:4px}
+.v3d .zbtn{width:28px;height:28px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:rgba(20,26,38,.7);color:#cfd8e8;font:600 15px/1 var(--f-body);cursor:pointer;padding:0}
+.v3d .zbtn:hover{background:rgba(60,80,120,.85)}
+.v3d .hint{position:absolute;left:10px;bottom:8px;font:500 .68rem var(--f-body);letter-spacing:.06em;color:#9aa6bb;pointer-events:none}
+@media (max-width:900px){.demo-body.has3d{grid-template-columns:minmax(0,1fr)}.v3d{aspect-ratio:4/3}}
+.demo-bot{display:flex;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line)}
+.play{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--panel2);color:var(--fg);cursor:pointer;font-size:.9rem;flex:none}
+.play:hover{border-color:var(--accent)}
+.scrub{flex:1;min-width:0;accent-color:var(--accent)}
+.time{font:400 .78rem var(--f-body);color:var(--mute);min-width:8ch;text-align:right;font-variant-numeric:tabular-nums}
+.toggles{display:flex;gap:6px}
+.toggles.spd{margin-right:18px}
+.note{font-size:.84rem;color:var(--mute);padding:10px 14px 14px}
+.loading{position:absolute;inset:0;display:grid;place-items:center;color:#8d98ab;font:700 .8rem var(--f-mono);pointer-events:none}
+
+/* method */
+.figure{background:#fff;border-radius:14px;border:1px solid var(--line);padding:clamp(10px,2vw,22px)}
+.figure img{width:100%;height:auto;display:block}
+
+.abstract{max-width:78ch;margin:0 auto;font-size:.95rem;text-align:justify;hyphens:auto}
+.ph{border:1px dashed var(--line);border-radius:14px;padding:26px;color:var(--mute);background:repeating-linear-gradient(135deg,transparent 0 12px,color-mix(in srgb,var(--line) 35%,transparent) 12px 13px)}
+.ph b{color:var(--fg);font-family:var(--f-display)}
+pre{margin:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;overflow-x:auto;font:400 .84rem/1.55 var(--f-mono)}
+.bib{position:relative}
+.bib .btn{position:absolute;top:10px;right:10px;padding:5px 12px;font-size:.8rem}
+footer{padding-block:36px;color:var(--mute);font-size:.86rem;border-top:1px solid var(--line)}
+@media (max-width:640px){.stage.grid{grid-template-columns:1fr 1fr}.toggles{margin-left:auto}}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<nav><div class="wrap">
+  <b>Tracktail</b>
+  <a href="#abstract">Abstract</a><a href="#method">Method</a><a href="#benchmarks">Benchmarks</a><a href="#odyssey">Multi-View Point Odyssey</a><a href="#wild">Animal Demos</a><a href="#cite">Citation</a>
+</div></nav>
+
+<header class="wrap hero">
+  <h1>Tracktail: Multi-View 3D Point Tracking without Depth Input</h1>
+  <div class="strip" aria-hidden="true"></div>
+  <p class="authors"><span class="n">Katie L. Rupp<sup>1</sup></span>, <span class="n">Jonathan Wong<sup>1</sup></span>, <span class="n">Sharmishtaa Seshamani<sup>1</sup></span>, <span class="n">Ana Mafalda Vicente<sup>1</sup></span>, <span class="n">Lili Karashchuk<sup>2</sup></span></p>
+  <div class="affil"><span><sup>1</sup>Allen Institute, Seattle, WA</span><span><sup>2</sup>HHMI Janelia Research Campus, Ashburn, VA</span></div>
+  <div class="links">
+    <a class="btn" aria-disabled="true" href="#"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h9l5 5v15H6zM14 3.5V8h4.5zM8 12h8v1.5H8zm0 3h8v1.5H8z"/></svg>Paper</a>
+    <a class="btn" href="https://github.com/AI-HHMI/tracktail" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>Code</a>
+    <a class="btn" href="https://huggingface.co/ai-hhmi/datasets" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c4.700 0 8.500 1.700 8.500 3.800S16.700 10.600 12 10.600 3.500 8.900 3.500 6.800 7.300 3 12 3zm8.500 6.500v3.700c0 2.100-3.800 3.800-8.500 3.800s-8.500-1.700-8.500-3.800V9.500c1.600 1.500 4.800 2.600 8.500 2.600s6.900-1.100 8.500-2.600zm0 6.500v3.200c0 2.100-3.800 3.800-8.500 3.800s-8.500-1.700-8.500-3.800V16c1.600 1.500 4.800 2.600 8.500 2.600s6.900-1.100 8.500-2.600z"/></svg>Data</a>
+    <a class="btn" aria-disabled="true" href="#"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5zM2 12l10 5 10-5M2 17l10 5 10-5" fill="none" stroke="currentColor" stroke-width="2"/></svg>Weights</a>
+  </div>
+  <div class="hero-demo" id="hero-demo"></div>
+</header>
+
+<main>
+<section id="abstract"><div class="wrap">
+  <div class="sec-head"><h2>Abstract</h2></div>
+  <p class="abstract">We introduce Tracktail, a novel architecture designed to efficiently track query points in 3D from multiple calibrated views without any depth input. Our architecture separates the task as a per-camera video encoding of features and a per-query decoder. Notably, camera cross-attention is only performed across queries in the decoder, allowing for efficient inference (7 FPS and less than 4 GB memory for 10 views and 100 query points). We further introduce a per-camera scene scale computed from camera geometry, which allows us to normalize inputs and predictions appropriately across a vast variety of dataset scales. We train on a synthetic Multi-View Kubric dataset as well as a novel Multi-View Point Odyssey benchmark dataset, which consists of synthetic renders of humans and animals across 499 frames. Tracktail achieves state-of-the-art results on the Panoptic Studio, DexYCB, and Multi-View Kubric benchmarks, outperforming methods that rely on estimated depth. Tracktail also demonstrates a strong ability to maintain accurate tracking over longer ranges compared to existing methods. Our code, data, and weights are publicly available.</p>
+</div></section>
+
+<section id="method"><div class="wrap">
+  <div class="sec-head"><h2>Method</h2>
+    <p class="abstract">Given frames from multi-view videos, the corresponding camera intrinsics and extrinsics, and 3D query points with their query times, Tracktail predicts the 2D and 3D trajectories and visibilities of the query points for all input frames. First, the frames are passed through a video encoder (V-JEPA 2.1) independently per view to obtain a scene representation. The 3D queries are passed through a query encoder to obtain a camera-specific query embedding for each view and target frame. These embeddings are processed by a series of decoder blocks with camera self-attention across views, temporal self-attention across frames, and cross-attention from each view’s queries to that view’s scene tokens. The decoder predicts per-camera 3D positions, 2D positions, depth, visibility, and fusion weights, which are combined across cameras into the final 3D trajectories.</p></div>
+  <div class="figure"><img src="resources/architecture_final_lili_tnr.svg" alt="Tracktail architecture: per-camera video encoders feed a per-query decoder with camera cross-attention."></div>
+</div></section>
+
+<section id="benchmarks"><div class="wrap">
+  <div class="sec-head"><h2>Benchmark Results</h2>
+    <p class="lede" style="max-width:78ch;text-align:justify">Predictions on held-out test trials from Multi-View Kubric, DexYCB and Panoptic Studio. Tracktail achieves state-of-the-art results on these benchmarks, and performs especially well on the real-world datasets DexYCB and Panoptic Studio. We follow the evaluation protocol of <a href="https://ethz-vlg.github.io/mvtracker/" target="_blank" rel="noopener">MVTracker</a>: all methods are run on the same tracks (384 on Panoptic Studio and DexYCB, 512 on Multi-View Kubric), query frames, and subset of 4 cameras.</p></div>
+  <div id="bench-demo"></div>
+</div></section>
+
+<section id="odyssey"><div class="wrap">
+  <div class="sec-head"><h2>Multi-View Point Odyssey</h2>
+    <p class="lede" style="max-width:78ch;text-align:left;margin-bottom:0">A new multi-view training and benchmark dataset for 3D point tracking.</p>
+    <div class="exgrid"><div class="half"><div class="hl">Human</div><div class="g3"><video src="resources/grid/hum77.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/hum39.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/hum33.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/hum67.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/hum54.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/hum40.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/hum59.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/hum7.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/hum65.mp4" autoplay muted loop playsinline preload="metadata"></video></div></div><div class="half"><div class="hl">Animal</div><div class="g3"><video src="resources/grid/ani184.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/ani1.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/ani68.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/ani85.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/ani159.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/ani42.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/ani73.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/ani201.mp4" autoplay muted loop playsinline preload="metadata"></video><video src="resources/grid/ani57.mp4" autoplay muted loop playsinline preload="metadata"></video></div></div></div>
+  <p class="lede" style="max-width:78ch;text-align:justify">Multi-View Point Odyssey is composed of a human dataset and an animal dataset. We build both by extending the <a href="https://pointodyssey.com/" target="_blank" rel="noopener">Point Odyssey</a> generation pipeline so that every scene is rendered from 9 static cameras placed around the subject, with ground-truth 3D trajectories and per-camera visibility for every surface point. The human dataset uses <a href="https://www.mixamo.com/" target="_blank" rel="noopener">Mixamo</a> characters rigged with <a href="https://amass.is.tue.mpg.de/" target="_blank" rel="noopener">AMASS</a> motions, and the animal dataset uses <a href="https://github.com/rabbityl/DeformingThings4D" target="_blank" rel="noopener">DeformingThings4D</a> animal models and animation sequences with random fur textures from <a href="https://www.blenderkit.com/" target="_blank" rel="noopener">BlenderKit</a>. Each scene has a random HDRI environment and distractor objects, which random forces push around throughout the video.</p>
+    <div class="links" style="margin-top:6px"><a class="btn" href="https://huggingface.co/datasets/ai-hhmi/mv-po-human" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c4.700 0 8.500 1.700 8.500 3.800S16.700 10.600 12 10.600 3.500 8.900 3.500 6.800 7.300 3 12 3zm8.500 6.500v3.700c0 2.100-3.800 3.800-8.500 3.800s-8.500-1.700-8.500-3.800V9.500c1.600 1.500 4.800 2.600 8.500 2.600s6.900-1.100 8.500-2.600zm0 6.500v3.200c0 2.100-3.800 3.800-8.500 3.800s-8.500-1.700-8.500-3.800V16c1.600 1.500 4.800 2.600 8.500 2.600s6.900-1.100 8.500-2.600z"/></svg>Human dataset</a> <a class="btn" href="https://huggingface.co/datasets/ai-hhmi/mv-po-animal" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c4.700 0 8.500 1.700 8.500 3.800S16.700 10.600 12 10.600 3.500 8.900 3.500 6.800 7.300 3 12 3zm8.500 6.500v3.700c0 2.100-3.800 3.800-8.500 3.800s-8.500-1.700-8.500-3.800V9.500c1.600 1.500 4.800 2.600 8.500 2.600s6.900-1.100 8.500-2.600zm0 6.500v3.200c0 2.100-3.800 3.800-8.500 3.800s-8.500-1.700-8.500-3.800V16c1.600 1.500 4.800 2.600 8.500 2.600s6.900-1.100 8.500-2.600z"/></svg>Animal dataset</a> <a class="btn" aria-disabled="true" href="#"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>Data generation code</a></div>
+  <p class="lede" style="max-width:78ch;text-align:justify;margin-top:16px">The human dataset has 113 training and 8 test sequences, and the animal dataset has 210 training and 10 test sequences. Each test sequence is 499 frames long and comes with 512 evaluation tracks stratified by speed. The clips below show Tracktail performance on held-out test sequences, shown from 4 of the 9 cameras.</p></div>
+  <div id="po-demo"></div>
+</div></section>
+
+<section id="wild"><div class="wrap">
+  <div class="sec-head"><h2>Animal Demos</h2>
+    <p class="lede" style="max-width:78ch;text-align:justify">Tracktail generalizes to real-world animal datasets. It tracks multiple subjects by taking each subject's initial query points separately. Here, dense query points are sampled from a point cloud initialized around the region of the initial ground-truth coordinates. Some point drift is expected over spans of about 200 frames, but performance is still strong considering Tracktail was trained only on synthetic data.</p></div>
+  <div id="wild-demo"></div>
+</div></section>
+
+<section id="cite"><div class="wrap">
+  <div class="sec-head"><h2>BibTeX</h2></div>
+  <div class="bib"><button class="btn" id="copybib" type="button">Copy</button>
+<pre id="bibtex">@article{tracktail2026,
+  title   = {Tracktail: Multi-View 3D Point Tracking without Depth Input},
+  author  = {Katie L. Rupp and Jonathan Wong and Sharmishtaa Seshamani and Ana Mafalda Vicente and Lili Karashchuk},
+  journal = {arXiv preprint},
+  year    = {2026}
+}</pre></div>
+</div></section>
+</main>
+<footer><div class="wrap">Tracktail &middot; <a href="https://github.com/AI-HHMI/tracktail" target="_blank" rel="noopener">github.com/AI-HHMI/tracktail</a></div></footer>
+
+<script>
+(function(){
+const BASE = 'demos/';
+const GROUPS = {
+  hero: [{name:'Point Odyssey', trials:[{id:'hum0',label:'Human',dir:'po/hum0_dense'}]}],
+  bench: [
+    {name:'Multi-View Kubric', trials:[{id:'k5',label:'Trial 1',dir:'bench/kubric_5',rate:2},{id:'k11',label:'Trial 2',dir:'bench/kubric_11',rate:2}]},
+    {name:'DexYCB', trials:[{id:'d1',label:'Trial 1',dir:'bench/dexycb_01',rate:2},{id:'d2',label:'Trial 2',dir:'bench/dexycb_02',rate:2}]},
+    {name:'Panoptic Studio', trials:[{id:'p1',label:'Basketball',dir:'bench/panoptic_basketball',rate:2},{id:'p2',label:'Juggle',dir:'bench/panoptic_juggle',rate:2}]}],
+  po: [
+    {name:'Human', trials:[{id:'h0',label:'Human 1',dir:'po/hum0'},{id:'h1',label:'Human 2',dir:'po/hum1'},{id:'h6',label:'Human 3',dir:'po/hum6'}]},
+    {name:'Animal', trials:[{id:'a11',label:'Animal 1',dir:'po/ani11'},{id:'a4',label:'Animal 2',dir:'po/ani4'}]}],
+  wild: [{name:'Rat7M', trials:[{id:'r1',label:'Clip 1',dir:'animals/rat7m'}]},
+    {name:'3DPop', trials:[{id:'p1',label:'Clip 1',dir:'animals/3dpop'}]}]
+};
+const MISSING = -32768;
+const cache = {};
+function load(dir){
+  if(cache[dir]) return cache[dir];
+  return cache[dir] = fetch(BASE+dir+'/manifest.json').then(r=>{if(!r.ok) throw new Error(dir); return r.json();}).then(async m=>{
+    m.dir = dir; m.tracks = [];
+    if(m.cloud3d){ try{ const r = await fetch(BASE+dir+'/'+m.cloud3d.file); m.c3 = new Int16Array(await r.arrayBuffer()); }catch(e){ m.c3 = null; }
+      if(m.cloud3d.visfile){ try{ const r = await fetch(BASE+dir+'/'+m.cloud3d.visfile); m.cv = new Uint8Array(await r.arrayBuffer()); }catch(e){ m.cv = null; } } }
+    await Promise.all(m.views.map(async (v,i)=>{
+      try{ const r = await fetch(BASE+dir+'/'+v.name+'.bin'); m.tracks[i] = new Int16Array(await r.arrayBuffer()); }
+      catch(e){ m.tracks[i] = null; }
+    }));
+    return m;
+  });
+}
+const el = (t,c,h)=>{const e=document.createElement(t); if(c) e.className=c; if(h!=null) e.innerHTML=h; return e;};
+const fmt = s=>{s=Math.max(0,s);const m=Math.floor(s/60);return m+':'+String(Math.floor(s%60)).padStart(2,'0');};
+
+function Demo(root, groups, opts){
+  opts = opts||{};
+  let speed = 1, gi = 0, ti = 0, man = null, vi = 0, grid = !!opts.grid, trails = opts.trails!==false, dots = true, occl = !!opts.occluded, playing = true, cells = [], token = 0, v3 = null;
+  const top = el('div','demo-top'), stage = el('div','stage'), bot = el('div','demo-bot');
+  const gG = el('div','group'), tG = el('div','group'), vG = el('div','group'), oG = el('div','group');
+  if(groups.length>1) top.append(gG);
+  if(groups.some(g=>g.trials.length>1)) top.append(tG);
+  top.append(vG, oG);
+  const play = el('button','play','&#10074;&#10074;'); play.type='button'; play.setAttribute('aria-label','Play or pause');
+  const scrub = el('input','scrub'); scrub.type='range'; scrub.min=0; scrub.max=1000; scrub.value=0; scrub.setAttribute('aria-label','Seek');
+  const time = el('span','time','1 / 1');
+  const tog = el('div','toggles');
+  const bTr = el('button','pill','Trails'), bDt = el('button','pill','Points'), bOc = el('button','pill','Occluded');
+  [bTr,bDt,bOc].forEach(b=>{b.type='button';b.setAttribute('aria-pressed','true');}); bTr.setAttribute('aria-pressed',trails); bOc.setAttribute('aria-pressed',occl); bOc.title='Also show points that are hidden behind the subject in this view'; bOc.style.display='none'; tog.append(bTr,bDt,bOc);
+  const spG = el('div','toggles spd'); spG.title = 'Playback speed';
+  const spB = [[.25,'0.25×'],[.5,'0.5×'],[1,'1×']].map(([v,l])=>{ const b = el('button','pill',l); b.type='button'; b.setAttribute('aria-pressed', v===speed); b.onclick = ()=>{ speed = v; spB.forEach(([w,x])=>x.setAttribute('aria-pressed', w===speed)); applyRate(); }; spG.append(b); return [v,b]; });
+  bot.append(play,scrub,time,spG,tog);
+  root.append(el('div','demo')); const demo = root.firstChild; const body = el('div','demo-body'); body.append(stage); demo.append(top,body,bot);
+
+  function pills(host, items, cur, cb, label){
+    host.innerHTML = label?'<label>'+label+'</label>':'';
+    items.forEach((t,i)=>{const b=el('button','pill',t); b.type='button'; b.setAttribute('aria-pressed', i===cur); b.onclick=()=>cb(i); host.append(b);});
+  }
+  function drawControls(){
+    pills(gG, groups.map(g=>g.name), gi, i=>{gi=i;ti=0;open();}, 'Dataset');
+    pills(tG, groups[gi].trials.map(t=>t.label), ti, i=>{ti=i;open();}, 'Clip');
+    if(man){
+      vG.innerHTML = '<label>Camera</label>';
+      man.views.forEach((v,i)=>{const mm = /^view_?0*(\d+)$/i.exec(v.name); const b=el('button','pill', 'View '+((opts.realNames && mm) ? mm[1] : (i+1))); b.type='button'; b.title=v.name; b.setAttribute('aria-pressed', !grid && i===vi); b.onclick=()=>{setView(i,false);}; vG.append(b);});
+      const bg = el('button','pill','All '+man.views.length); bg.type='button'; bg.setAttribute('aria-pressed', grid); bg.onclick=()=>{setView(vi,true);}; vG.append(bg);
+    }
+  }
+  function master(){ return cells[vi] && cells[vi].video; }
+  function setView(i, g){
+    const t = master() ? master().currentTime : 0;
+    vi = i; grid = g; applyLayout(t); drawControls(); snap3(i);
+  }
+  function rateNow(){ const tr = groups[gi].trials[ti]; return (tr.rate||1)*speed; }
+  function applyRate(){ const r = rateNow(); cells.forEach(c=>{ c.video.defaultPlaybackRate = r; c.video.playbackRate = r; }); }
+  function applyLayout(t){
+    stage.classList.toggle('grid', grid); body.classList.toggle('stack', grid && !!opts.stackGrid);
+    cells.forEach((c,i)=>{
+      const on = grid || i===vi;
+      c.node.classList.toggle('on', on);
+      { const mm = /^view_?0*(\d+)$/i.exec(man.views[i].name); c.node.querySelector('.tagv').textContent = 'VIEW '+((opts.realNames && mm) ? mm[1] : (i+1)); }
+      if(on){
+        if(!c.video.src) c.video.src = BASE+man.dir+'/'+man.views[i].name+'.mp4';
+        const seek = ()=>{ try{ c.video.currentTime = t; }catch(e){} };
+        if(c.video.readyState>0) seek(); else c.video.addEventListener('loadedmetadata', seek, {once:true});
+        if(playing) c.video.play().catch(()=>{}); else c.video.pause();
+      } else { c.video.pause(); }
+    });
+    applyRate(); resize();
+  }
+  async function open(){
+    const my = ++token;
+    cells.forEach(c=>{c.video.pause(); c.video.removeAttribute('src'); c.video.load();});
+    stage.innerHTML = ''; cells = [];
+    const ld = el('div','loading','loading…'); stage.append(ld);
+    const tr = groups[gi].trials[ti];
+    try{ man = await load(tr.dir); }catch(e){ ld.textContent='failed to load clip'; return; }
+    if(my!==token) return;
+    ld.remove();
+    vi = Math.min(vi, man.views.length-1);
+    const v0 = man.views[0];
+    stage.style.setProperty('--ar', v0.w+' / '+v0.h); stage.style.setProperty('--arn', v0.w/v0.h);
+    man.views.forEach((v,i)=>{
+      const node = el('div','cell'), video = el('video'), cv = el('canvas'), tag = el('span','tagv');
+      video.muted = true; video.loop = true; video.playsInline = true; video.preload = 'auto'; video.setAttribute('playsinline','');
+      node.append(video, cv, tag); stage.append(node);
+      cells.push({node, video, cv, ctx: cv.getContext('2d')});
+    });
+    bOc.style.display = man.occ ? '' : 'none';
+    mk3d();
+    drawControls(); applyLayout(0);
+    resize();
+  }
+  function resize(){
+    const dpr = Math.min(2, window.devicePixelRatio||1);
+    if(v3){ const r = v3.node.getBoundingClientRect(); const w = Math.round(r.width*dpr), h = Math.round(r.height*dpr);
+      if(w && (v3.cv.width!==w||v3.cv.height!==h)){ v3.cv.width=w; v3.cv.height=h; } }
+    cells.forEach(c=>{
+      const r = c.node.getBoundingClientRect(); if(!r.width) return;
+      const w = Math.round(r.width*dpr), h = Math.round(r.height*dpr);
+      if(c.cv.width!==w||c.cv.height!==h){ c.cv.width=w; c.cv.height=h; }
+    });
+  }
+  new ResizeObserver(resize).observe(body);
+
+
+  // ---- 3D point-cloud viewer (canvas 2D, no dependencies): world z is up
+  const wrapA = a=>Math.atan2(Math.sin(a),Math.cos(a));
+  function mk3d(){
+    if(v3){ v3.node.remove(); v3 = null; }
+    const ok = !!(man.cloud3d && man.c3);
+    body.classList.toggle('has3d', ok); if(opts.cols) body.style.setProperty('--cols', opts.cols);
+    if(!ok) return;
+    const node = el('div','v3d'), cv = el('canvas'), hint = el('span','hint','3D VIEW · DRAG TO ROTATE · CTRL+SCROLL OR +/− TO ZOOM');
+    const zb = el('div','zoomb'); [['+','Zoom in'],['−','Zoom out'],['↺','Reset view']].forEach(([t,l],i)=>{ const b = el('button','zbtn',t); b.type='button'; b.title=l; b.setAttribute('aria-label',l);
+      b.onclick = e=>{ e.stopPropagation(); if(!v3) return; if(i===0) v3.dist = Math.max(60, v3.dist/1.3); else if(i===1) v3.dist = Math.min(30000, v3.dist*1.3); else { v3.dist = v3.dist0; snap3(vi); } }; b.onpointerdown = e=>e.stopPropagation(); zb.append(b); });
+    node.append(cv, hint, zb); body.append(node);
+    v3 = {node, cv, ctx: cv.getContext('2d'), yaw:0, pitch:.5, dist:man.cloud3d.dist||700, dist0:man.cloud3d.dist||700, ty:0, tp:.5, tgt:null, drag:null};
+    snap3(vi, true);
+    node.addEventListener('pointerdown', e=>{ node.setPointerCapture(e.pointerId); v3.drag = {x:e.clientX, y:e.clientY}; v3.ty = v3.yaw; v3.tp = v3.pitch; });
+    node.addEventListener('pointermove', e=>{ if(!v3.drag) return; v3.yaw -= (e.clientX-v3.drag.x)*.008; v3.pitch = Math.max(-.2, Math.min(1.5, v3.pitch + (e.clientY-v3.drag.y)*.008)); v3.ty = v3.yaw; v3.tp = v3.pitch; v3.drag = {x:e.clientX, y:e.clientY}; });
+    node.addEventListener('wheel', e=>{ if(!(e.ctrlKey||e.metaKey)) return; e.preventDefault(); v3.dist = Math.max(60, Math.min(30000, v3.dist*Math.exp(e.deltaY*.01))); }, {passive:false});
+    const end = ()=>{ if(v3) v3.drag = null; };
+    node.addEventListener('pointerup', end); node.addEventListener('pointercancel', end);
+  }
+  function snap3(i, now){
+    if(!v3 || !man.cloud3d || !man.cloud3d.cams[i]) return;
+    const c = man.cloud3d.cams[i].c, t = v3.tgt || [0,0,0];
+    const dx = c[0]-t[0], dy = c[1]-t[1], dz = c[2]-t[2], r = Math.hypot(dx,dy,dz);
+    v3.ty = Math.atan2(dy,dx); v3.tp = Math.max(.15, Math.min(1.3, Math.asin(dz/r)));
+    if(now){ v3.yaw = v3.ty; v3.pitch = v3.tp; }
+  }
+  function draw3d(f){
+    const V = v3, m = man, cv = V.cv, ctx = V.ctx, W = cv.width, H = cv.height, N = m.points, sc = m.cloud3d.scale, q = m.c3;
+    if(!W) return;
+    ctx.clearRect(0,0,W,H);
+    // target follows the (smoothed) centroid of visible points
+    const cvf = m.cv, flag = i=> cvf ? cvf[i] : (q[i*3]===MISSING ? 0 : 1);
+    let sx=0, sy=0, sz=0, n=0; const o0 = f*N*3;
+    for(let p=0;p<N;p+=4){ if(flag(f*N+p)!==1) continue; const o = o0+p*3; sx+=q[o]; sy+=q[o+1]; sz+=q[o+2]; n++; }
+    if(n){ const c = [sx/n/sc, sy/n/sc, sz/n/sc]; V.tgt = V.tgt ? V.tgt.map((v,i)=>v+(c[i]-v)*.08) : c; }
+    const t = V.tgt || [0,0,0];
+    if(!V.drag){ V.yaw += wrapA(V.ty-V.yaw)*.1; V.pitch += (V.tp-V.pitch)*.1; }
+    const cy = Math.cos(V.yaw), sy_ = Math.sin(V.yaw), cp = Math.cos(V.pitch), sp = Math.sin(V.pitch);
+    const eye = [t[0]+V.dist*cp*cy, t[1]+V.dist*cp*sy_, t[2]+V.dist*sp];
+    const fw = [-cp*cy, -cp*sy_, -sp];                         // forward
+    let rt = [fw[1], -fw[0], 0]; const rl = Math.hypot(rt[0], rt[1]) || 1; rt = [rt[0]/rl, rt[1]/rl, 0];   // right = fw x up(0,0,1)
+    const up = [rt[1]*fw[2]-rt[2]*fw[1], rt[2]*fw[0]-rt[0]*fw[2], rt[0]*fw[1]-rt[1]*fw[0]];
+    const F = 1.5*H;
+    const P = (x,y,z)=>{ const dx=x-eye[0], dy=y-eye[1], dz=z-eye[2]; const d = dx*fw[0]+dy*fw[1]+dz*fw[2]; if(d<20) return null;
+      return [W/2 + F*(dx*rt[0]+dy*rt[1]+dz*rt[2])/d, H/2 - F*(dx*up[0]+dy*up[1]+dz*up[2])/d, d]; };
+    const line = (a,b)=>{ const A = P(...a), B = P(...b); if(!A||!B) return; ctx.moveTo(A[0],A[1]); ctx.lineTo(B[0],B[1]); };
+    const dpr = W/V.node.getBoundingClientRect().width || 1;
+    // floor grid
+    const z0 = m.cloud3d.floor, gs = m.cloud3d.gridstep||100, gx = Math.round(t[0]/gs)*gs, gy = Math.round(t[1]/gs)*gs;
+    ctx.lineWidth = dpr; ctx.strokeStyle = 'rgba(160,175,200,.16)'; ctx.beginPath();
+    for(let k=-5*gs;k<=5*gs;k+=gs){ line([gx+k,gy-5*gs,z0],[gx+k,gy+5*gs,z0]); line([gx-5*gs,gy+k,z0],[gx+5*gs,gy+k,z0]); }
+    ctx.stroke();
+    // camera frustums
+    m.cloud3d.cams.forEach((c,k)=>{
+      if(Math.hypot(c.c[0]-eye[0], c.c[1]-eye[1], c.c[2]-eye[2]) < V.dist*0.9) return;     // camera between the eye and the subject: don't let its frustum cover the scene
+      const on = (k===vi), dep = 70, hw = c.W/2, hh = c.H/2, R = c.R;
+      const cor = [[-c.cx,-c.cy],[c.W-c.cx,-c.cy],[c.W-c.cx,c.H-c.cy],[-c.cx,c.H-c.cy]].map(([u,v])=>{
+        const a = u/c.fx*dep, b = v/c.fy*dep, d = dep; return [c.c[0]+R[0]*a+R[1]*b+R[2]*d, c.c[1]+R[3]*a+R[4]*b+R[5]*d, c.c[2]+R[6]*a+R[7]*b+R[8]*d]; });
+      ctx.strokeStyle = on ? 'rgba(120,170,255,.95)' : 'rgba(150,165,190,.4)'; ctx.lineWidth = (on?2:1)*dpr; ctx.beginPath();
+      cor.forEach((p,j)=>{ line(c.c,p); line(p,cor[(j+1)%4]); }); ctx.stroke();
+      const A = P(...c.c); if(A){ ctx.fillStyle = on ? '#9cc0ff' : '#8d98ab'; ctx.font = '600 '+Math.round(11*dpr)+'px sans-serif'; ctx.fillText(String(k+1), A[0]+6*dpr, A[1]-6*dpr); }
+    });
+    // trails
+    const Nt = Math.min(N, m.trail_n||0), L = Math.min(f, (m.trail_len||Math.round(m.fps*0.9)));
+    if(trails && L>1){
+      ctx.lineWidth = dpr; ctx.globalAlpha = .45;
+      for(let p=0;p<Nt;p++){
+        ctx.strokeStyle = m.colors[p]; ctx.beginPath(); let pen = false;
+        for(let u=f-L;u<=f;u++){ const o = (u*N+p)*3; if(flag(u*N+p)!==1){ pen=false; continue; }
+          const A = P(q[o]/sc, q[o+1]/sc, q[o+2]/sc); if(!A){ pen=false; continue; }
+          if(pen) ctx.lineTo(A[0],A[1]); else { ctx.moveTo(A[0],A[1]); pen=true; } }
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    // points, far to near
+    if(dots){
+      const pts = [];
+      for(let p=0;p<N;p++){ const fl = flag(f*N+p); if(fl===0 || (fl===2 && !occl)) continue; const o = o0+p*3; const A = P(q[o]/sc, q[o+1]/sc, q[o+2]/sc); if(A) pts.push([A[2],A[0],A[1],p,fl]); }
+      pts.sort((a,b)=>b[0]-a[0]);
+      for(const [d,x,y,p,fl] of pts){ ctx.globalAlpha = fl===2 ? .3 : 1; ctx.fillStyle = m.colors[p]; ctx.beginPath(); ctx.arc(x, y, Math.max(1.2*dpr, F*(fl===2?1.9:2.4)/d), 0, 6.2832); ctx.fill(); }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawCell(i, c, f){
+    const m = man, tk = m.tracks[i], ctx = c.ctx, W = c.cv.width, H = c.cv.height;
+    ctx.clearRect(0,0,W,H);
+    if(!tk) return;
+    const sx = W/m.views[i].w, sy = H/m.views[i].h, k = 1/m.scale, N = m.points, T = m.frames;
+    const rad = m.dense ? Math.max(1.5, W/380) : Math.max(2.2, W/220), Nt = m.dense ? Math.min(N, m.trail_n||0) : N;
+    const L = Math.min(f, (m.trail_len||Math.round(m.fps*0.9)));
+    ctx.lineCap='round'; ctx.lineJoin='round';
+    if(trails && L>1){
+      ctx.lineWidth = Math.max(1.2, W/420);
+      for(let p=0;p<Nt;p++){
+        ctx.strokeStyle = m.colors[p];
+        for(let s=0;s<3;s++){
+          const a = f-L+Math.floor(L*s/3), b = f-L+Math.floor(L*(s+1)/3)+1;
+          ctx.globalAlpha = 0.25 + 0.3*s; ctx.beginPath(); let pen = false;
+          for(let t=a;t<=b && t<=f;t++){
+            const o = (t*N+p)*2, x = tk[o];
+            if(x===MISSING || (m.occ && x<0)){ pen=false; continue; }
+            const X = x*k*sx, Y = tk[o+1]*k*sy;
+            if(pen) ctx.lineTo(X,Y); else { ctx.moveTo(X,Y); pen=true; }
+          }
+          ctx.stroke();
+        }
+      }
+    }
+    if(dots){
+      if(m.occ && occl){          // tracked but hidden in this view: faint
+        ctx.globalAlpha = .3;
+        for(let p=0;p<N;p++){
+          const o = (f*N+p)*2, x = tk[o]; if(x===MISSING || x>=0) continue;
+          ctx.fillStyle = m.colors[p]; ctx.beginPath(); ctx.arc((-x-1)*k*sx, tk[o+1]*k*sy, rad*.8, 0, 6.2832); ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+      for(let p=0;p<N;p++){
+        const o = (f*N+p)*2, x = tk[o]; if(x===MISSING || (m.occ && x<0)) continue;
+        ctx.fillStyle = m.colors[p]; ctx.beginPath(); ctx.arc(x*k*sx, tk[o+1]*k*sy, rad, 0, 6.2832); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  function frame(){
+    if(man && cells.length){
+      const mv = master();
+      if(mv){
+        const T = man.frames;
+        cells.forEach((c,i)=>{
+          if(!c.node.classList.contains('on')) return;
+          if(i!==vi && grid && !mv.paused){
+            const now = performance.now();
+            if(c.video.paused) c.video.play().catch(()=>{});
+            if(!c.video.seeking && now-(c.lastSync||0)>600 && Math.abs(c.video.currentTime-mv.currentTime)>0.25){ c.lastSync = now; try{c.video.currentTime = mv.currentTime;}catch(e){} }
+          }
+          const ft = (i===vi? mv : c.video).currentTime;
+          drawCell(i, c, Math.max(0, Math.min(T-1, Math.floor(ft*man.fps+0.02))));
+        });
+        if(v3) draw3d(Math.max(0, Math.min(T-1, Math.floor(mv.currentTime*man.fps+0.02))));
+        if(mv.duration) { if(!scrub.matches(':active')) scrub.value = 1000*mv.currentTime/mv.duration; time.textContent = (Math.max(0,Math.min(man.frames-1,Math.floor(mv.currentTime*man.fps+0.02)))+1)+' / '+man.frames; }
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+  play.onclick = ()=>{ playing = !playing; play.innerHTML = playing?'&#10074;&#10074;':'&#9654;'; cells.forEach((c,i)=>{ if(!c.node.classList.contains('on')) return; playing? c.video.play().catch(()=>{}) : c.video.pause(); }); };
+  scrub.oninput = ()=>{ const mv = master(); if(!mv||!mv.duration) return; const t = mv.duration*scrub.value/1000; cells.forEach(c=>{ if(c.node.classList.contains('on')) try{c.video.currentTime=t;}catch(e){} }); };
+  bTr.onclick = ()=>{ trails=!trails; bTr.setAttribute('aria-pressed',trails); };
+  bDt.onclick = ()=>{ dots=!dots; bDt.setAttribute('aria-pressed',dots); };
+  bOc.onclick = ()=>{ occl=!occl; bOc.setAttribute('aria-pressed',occl); };
+  // only run clips that are on screen
+  new IntersectionObserver(es=>{ es.forEach(e=>{ cells.forEach(c=>{ if(!c.node.classList.contains('on')) return; if(e.isIntersecting && playing) c.video.play().catch(()=>{}); else if(!e.isIntersecting) c.video.pause(); }); }); },{threshold:0.1}).observe(demo);
+  open(); frame();
+}
+
+Demo(document.getElementById('hero-demo'), GROUPS.hero, {grid:true, occluded:true, realNames:true, cols:'minmax(0,3fr) minmax(0,2fr)'});
+Demo(document.getElementById('bench-demo'), GROUPS.bench, {grid:false});
+Demo(document.getElementById('po-demo'), GROUPS.po, {grid:false, realNames:true});
+Demo(document.getElementById('wild-demo'), GROUPS.wild, {grid:false});
+
+const cb = document.getElementById('copybib');
+cb.onclick = ()=>{
+  const txt = document.getElementById('bibtex').textContent;
+  const done = ok=>{cb.textContent = ok?'Copied':'Select and copy'; setTimeout(()=>cb.textContent='Copy',1600);};
+  if(navigator.clipboard) navigator.clipboard.writeText(txt).then(()=>done(true),()=>{ const r=document.createRange(); r.selectNodeContents(document.getElementById('bibtex')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); done(false); });
+};
+})();
+</script>
+</body>
+</html>
