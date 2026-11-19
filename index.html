@@ -276,8 +276,21 @@ function Demo(root, groups, opts){
     }
   }
   function master(){ return cells[vi] && cells[vi].video; }
-  // frame actually on screen: the browser's presented frame when available (currentTime can run ~1-2 frames ahead of it)
-  function fidx(c){ const T = man.frames; const f = (c.pf!=null && !c.video.seeking) ? c.pf : Math.floor(c.video.currentTime*man.fps+0.02); return Math.max(0, Math.min(T-1, f)); }
+  // Each cell's canvas paints the video frame AND its points together, from one frame index, so they can never disagree.
+  // With requestVideoFrameCallback this happens for every presented frame (mediaTime is that frame's timestamp);
+  // otherwise (or after a seek) from currentTime, which is the frame drawImage() shows.
+  const HAS_RVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
+  function frameAt(t, exact){ const f = exact ? Math.round(t*man.fps) : Math.floor(t*man.fps+1e-3); return Math.max(0, Math.min(man.frames-1, f)); }
+  function fidx(c){ return c.f>=0 ? c.f : frameAt(c.video.currentTime, false); }
+  function keyOf(c){ return ''+trails+dots+occl+'|'+c.cv.width+'x'+c.cv.height; }
+  function paint(c, f){
+    const v = c.video;
+    if(!man || v.readyState<2 || !c.cv.width) return;
+    if(f==null) f = frameAt(v.currentTime, false);
+    c.f = f; c.key = keyOf(c);
+    c.ctx.drawImage(v, 0, 0, c.cv.width, c.cv.height);
+    drawCell(c.i, c, f);
+  }
   function setView(i, g){
     const t = master() ? master().currentTime : 0;
     vi = i; grid = g; applyLayout(t); drawControls(); snap3(i);
@@ -315,8 +328,10 @@ function Demo(root, groups, opts){
       const node = el('div','cell'), video = el('video'), cv = el('canvas'), tag = el('span','tagv');
       video.muted = true; video.loop = true; video.playsInline = true; video.preload = 'auto'; video.setAttribute('playsinline','');
       node.append(video, cv, tag); stage.append(node);
-      const cell = {node, video, cv, ctx: cv.getContext('2d'), pf: null, key: ''};
-      if('requestVideoFrameCallback' in video){ const cb = (now, md)=>{ cell.pf = Math.round(md.mediaTime*man.fps); video.requestVideoFrameCallback(cb); }; video.requestVideoFrameCallback(cb); }
+      const cell = {node, video, cv, ctx: cv.getContext('2d'), i, f: -1, key: ''};
+      video.addEventListener('seeked', ()=>{ if(my===token) paint(cell); });
+      video.addEventListener('loadeddata', ()=>{ if(my===token) paint(cell); });
+      if(HAS_RVFC){ const cb = (now, md)=>{ if(my!==token) return; paint(cell, frameAt(md.mediaTime, true)); video.requestVideoFrameCallback(cb); }; video.requestVideoFrameCallback(cb); }
       cells.push(cell);
     });
     bOc.style.display = man.occ ? '' : 'none';
@@ -424,7 +439,6 @@ function Demo(root, groups, opts){
 
   function drawCell(i, c, f){
     const m = man, tk = m.tracks[i], ctx = c.ctx, W = c.cv.width, H = c.cv.height;
-    ctx.clearRect(0,0,W,H);
     if(!tk) return;
     const sx = W/m.views[i].w, sy = H/m.views[i].h, k = 1/m.scale, N = m.points, T = m.frames;
     const rad = m.dense ? Math.max(1.5, W/380) : Math.max(2.2, W/220), Nt = m.dense ? Math.min(N, m.trail_n||0) : N;
@@ -464,6 +478,7 @@ function Demo(root, groups, opts){
       }
     }
     ctx.globalAlpha = 1;
+    if(window.__ttDraw) window.__ttDraw(ctx, f, W, H);      // test hook
   }
   function frame(){
     if(man && cells.length){
@@ -472,13 +487,16 @@ function Demo(root, groups, opts){
         const T = man.frames;
         cells.forEach((c,i)=>{
           if(!c.node.classList.contains('on')) return;
-          if(i!==vi && grid && !mv.paused){
-            const now = performance.now();
+          if(i!==vi && grid && !mv.paused){      // keep the other views on the main view's clock
+            const now = performance.now(), D = mv.duration||0;
             if(c.video.paused) c.video.play().catch(()=>{});
-            if(!c.video.seeking && now-(c.lastSync||0)>600 && Math.abs(c.video.currentTime-mv.currentTime)>0.25){ c.lastSync = now; try{c.video.currentTime = mv.currentTime;}catch(e){} }
+            let d = c.video.currentTime-mv.currentTime;
+            if(D && Math.abs(d)>D/2) d -= Math.sign(d)*D;      // one of them already looped
+            if(!c.video.seeking && now-(c.lastSync||0)>1000 && Math.abs(d)>0.5){ c.lastSync = now; try{c.video.currentTime = mv.currentTime;}catch(e){} }
+            else c.video.playbackRate = rateNow()*(1-Math.max(-.1, Math.min(.1, d)));      // small drift: nudge the rate, no seek
           }
-          const f = fidx(c), key = f+'|'+trails+dots+occl+'|'+c.cv.width+'x'+c.cv.height;
-          if(key!==c.key){ c.key = key; drawCell(i, c, f); }      // redraw only when the shown frame or a setting changed
+          if(!HAS_RVFC && !c.video.paused) paint(c);                              // fallback: paint every animation frame
+          else if(keyOf(c)!==c.key && (c.video.paused || !HAS_RVFC)) paint(c, c.f>=0 ? c.f : null);   // paused: repaint on resize / setting change
         });
         if(v3) draw3d(fidx(cells[vi]));
         if(mv.duration) { if(!scrub.matches(':active')) scrub.value = 1000*mv.currentTime/mv.duration; time.textContent = (fidx(cells[vi])+1)+' / '+man.frames; }
