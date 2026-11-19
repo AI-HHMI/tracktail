@@ -11,8 +11,8 @@
 /* Layout: one calm column; the multi-view players are the only loud elements. Track colours (the spectrum strip) are the identity. */
 :root{
   --bg:#ffffff; --panel:#ffffff; --panel2:#f1f2f4; --line:#dcdfe4;
-  --fg:#363636; --mute:#6b6f76; --accent:#3273dc; --accent-ink:#ffffff; --stage:#0b0e14;
-  --spectrum:linear-gradient(90deg,#ff33c4 0%,#b36cff 33%,#5e95ff 66%,#33eaff 100%);
+  --fg:#363636; --mute:var(--fg); --affil:#6b6f76; --accent:#3273dc; --accent-ink:#ffffff; --stage:#0b0e14;
+  --spectrum:linear-gradient(90deg,#ff3b3b 0%,#ffb03b 17%,#e8e83b 33%,#3bd95a 50%,#3bc8ff 67%,#4a6bff 83%,#c43bff 100%);
   --f-display:"Noto Sans",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --f-body:"Noto Sans",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --f-mono:"Noto Sans",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -50,8 +50,8 @@ nav a:hover{color:var(--fg);text-decoration:none}
 .strip{height:4px;border-radius:2px;background:var(--spectrum);margin:24px auto;max-width:260px}
 .authors{font-size:1.02rem;line-height:1.7;max-width:62ch;margin:0 auto}
 .authors a,.authors span.n{color:var(--fg);white-space:nowrap}
-.authors sup{color:var(--mute);font-size:.7em;margin-left:1px}
-.affil{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 28px;margin-top:10px;color:var(--mute);font-size:.92rem}
+.authors sup{color:var(--affil);font-size:.7em;margin-left:1px}
+.affil{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 28px;margin-top:10px;color:var(--affil);font-size:.92rem}
 .venue{margin-top:14px;font:600 1rem var(--f-body)}
 .links{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-top:20px}
 .exgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0 26px}
@@ -112,6 +112,7 @@ nav a:hover{color:var(--fg);text-decoration:none}
 .figure{background:#fff;border-radius:14px;border:1px solid var(--line);padding:clamp(10px,2vw,22px)}
 .figure img{width:100%;height:auto;display:block}
 
+.contrib{max-width:78ch;margin:0 auto;font-size:.95rem;padding-left:1.3rem}.contrib li{margin:.45em 0}
 .abstract{max-width:78ch;margin:0 auto;font-size:.95rem;text-align:justify;hyphens:auto}
 .ph{border:1px dashed var(--line);border-radius:14px;padding:26px;color:var(--mute);background:repeating-linear-gradient(135deg,transparent 0 12px,color-mix(in srgb,var(--line) 35%,transparent) 12px 13px)}
 .ph b{color:var(--fg);font-family:var(--f-display)}
@@ -122,11 +123,15 @@ footer{padding-block:36px;color:var(--mute);font-size:.86rem;border-top:1px soli
 @media (max-width:640px){.stage.grid{grid-template-columns:1fr 1fr}.toggles{margin-left:auto}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" onload="renderMathInElement(document.getElementById('scene-scale'),{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\(',right:'\\)',display:false}]})"></script>
+<style>.eq{max-width:78ch;margin:14px auto;overflow-x:auto}</style>
 </head>
 <body>
 <nav><div class="wrap">
   <b>Tracktail</b>
-  <a href="#abstract">Abstract</a><a href="#method">Method</a><a href="#benchmarks">Benchmarks</a><a href="#odyssey">Multi-View Point Odyssey</a><a href="#cite">Citation</a>
+  <a href="#abstract">Abstract</a><a href="#contributions">Contributions</a><a href="#method">Method</a><a href="#scene-scale">Scene Scale</a><a href="#benchmarks">Benchmarks</a><a href="#odyssey">Multi-View Point Odyssey</a><a href="#cite">Citation</a>
 </div></nav>
 
 <header class="wrap hero">
@@ -149,10 +154,28 @@ footer{padding-block:36px;color:var(--mute);font-size:.86rem;border-top:1px soli
   <p class="abstract">We introduce Tracktail, a novel architecture designed to efficiently track query points in 3D from multiple calibrated views without any depth input. Our architecture separates the task as a per-camera video encoding of features and a per-query decoder. Notably, camera cross-attention is only performed across queries in the decoder, allowing for efficient inference (7 FPS and less than 4 GB memory for 10 views and 100 query points). We further introduce a per-camera scene scale computed from camera geometry, which allows us to normalize inputs and predictions appropriately across a vast variety of dataset scales. We train on a synthetic Multi-View Kubric dataset as well as a novel Multi-View Point Odyssey benchmark dataset, which consists of synthetic renders of humans and animals across 499 frames. Tracktail achieves state-of-the-art results on the Panoptic Studio, DexYCB, and Multi-View Kubric benchmarks, outperforming methods that rely on estimated depth. Tracktail also demonstrates a strong ability to maintain accurate tracking over longer ranges compared to existing methods. Our code, data, and weights are publicly available.</p>
 </div></section>
 
+<section id="contributions"><div class="wrap">
+  <div class="sec-head"><h2>Key Contributions</h2></div>
+  <ul class="contrib">
+    <li>We introduce Tracktail, a depth-free multi-view 3D point tracker with an encoder-decoder architecture.</li>
+    <li>We robustly handle the scene normalization problem by introducing a scene scale parameter computed from camera parameters and query points.</li>
+    <li>We establish a new benchmark dataset for 3D tracking, Multi-View Point Odyssey, to assess long-term tracking.</li>
+    <li>We demonstrate that our model achieves state-of-the-art results on existing benchmarks in both positional and occlusion accuracy.</li>
+    <li>We show that inference with our model is both faster and more memory efficient than existing 3D point tracking methods and scales better with the number of views.</li>
+  </ul>
+</div></section>
+
 <section id="method"><div class="wrap">
   <div class="sec-head"><h2>Method</h2>
     <p class="abstract">Given frames from multi-view videos, the corresponding camera intrinsics and extrinsics, and 3D query points with their query times, Tracktail predicts the 2D and 3D trajectories and visibilities of the query points for all input frames. First, the frames are passed through a video encoder (V-JEPA 2.1) independently per view to obtain a scene representation. The 3D queries are passed through a query encoder to obtain a camera-specific query embedding for each view and target frame. These embeddings are processed by a series of decoder blocks with camera self-attention across views, temporal self-attention across frames, and cross-attention from each view’s queries to that view’s scene tokens. The decoder predicts per-camera 3D positions, 2D positions, depth, visibility, and fusion weights, which are combined across cameras into the final 3D trajectories.</p></div>
   <div class="figure"><img src="resources/architecture_final_lili_tnr.svg" alt="Tracktail architecture: per-camera video encoders feed a per-query decoder with camera cross-attention."></div>
+</div></section>
+
+<section id="scene-scale"><div class="wrap">
+  <div class="sec-head"><h2>Scene Scale</h2></div>
+  <p class="abstract">Multi-view tracking has to work across cameras with different effective scales and datasets with different units. We robustly handle this with a per-camera scene scale \(s_c\), computed analytically from the camera parameters and the query points (it is not learned). Intuitively, \(s_c\) is the 3D displacement, in scene units, that moves a point by about one pixel in camera \(c\).</p>
+  <div class="eq abstract">$$s_c = \frac{1}{\operatorname{median}_{n\in\mathcal{V}_c}\,\sigma_{\max}\!\big(\mathbf{J}_c(\mathbf{q}_n)\big)}$$</div>
+  <p class="abstract">Here \(\mathbf{J}_c(\mathbf{q}_n)\in\mathbb{R}^{2\times3}\) is the Jacobian of camera \(c\)&#8217;s projection (extrinsics followed by pinhole) at query point \(\mathbf{q}_n\), so \(\sigma_{\max}\) is the largest pixel displacement per unit of 3D motion. We use \(s_c\) to express everything the network sees and predicts in pixel-like units: query depth is divided by \(s_c\), predicted 3D motion is expressed in units of \(s_c\), predicted depth in units of \(s_c f_c\) (with \(f_c\) the focal length), and the 3D losses are normalized the same way. This lets a single model train and run across camera rigs and datasets with arbitrary units, with no manual rescaling.</p>
 </div></section>
 
 <section id="benchmarks"><div class="wrap">
