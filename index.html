@@ -242,6 +242,42 @@ function load(dir){
 const el = (t,c,h)=>{const e=document.createElement(t); if(c) e.className=c; if(h!=null) e.innerHTML=h; return e;};
 const fmt = s=>{s=Math.max(0,s);const m=Math.floor(s/60);return m+':'+String(Math.floor(s%60)).padStart(2,'0');};
 
+// ---- minimal MP4 demuxer for the H.264 track (sample table -> chunks for WebCodecs' VideoDecoder)
+const mp4s = {};
+function demux(url){
+  return mp4s[url] || (mp4s[url] = fetch(url).then(r=>{ if(!r.ok) throw new Error(url); return r.arrayBuffer(); }).then(buf=>{
+    const dv = new DataView(buf), u8 = new Uint8Array(buf), str = a=>String.fromCharCode(u8[a],u8[a+1],u8[a+2],u8[a+3]);
+    const kids = (s,e)=>{ const out = []; while(s+8<=e){ let n = dv.getUint32(s), h = 8; const t = str(s+4);
+      if(n===1){ n = Number(dv.getBigUint64(s+8)); h = 16; } else if(n===0) n = e-s; if(n<h) break; out.push({t, s:s+h, e:s+n}); s += n; } return out; };
+    const one = (b,t)=>{ const r = kids(b.s,b.e).find(k=>k.t===t); if(!r) throw new Error('mp4: no '+t); return r; };
+    const u32 = a=>dv.getUint32(a);
+    const moov = kids(0, buf.byteLength).find(k=>k.t==='moov'); if(!moov) throw new Error('mp4: no moov');
+    for(const trak of kids(moov.s, moov.e).filter(k=>k.t==='trak')){
+      const mdia = one(trak,'mdia'); if(str(one(mdia,'hdlr').s+8)!=='vide') continue;
+      const stbl = one(one(mdia,'minf'),'stbl'), tab = t=>kids(stbl.s,stbl.e).find(k=>k.t===t);
+      const sd = tab('stsd'), ent = kids(sd.s+8, sd.e)[0];
+      if(ent.t!=='avc1' && ent.t!=='avc3') throw new Error('mp4: codec '+ent.t);
+      const avcC = kids(ent.s+78, ent.e).find(k=>k.t==='avcC'), desc = u8.slice(avcC.s, avcC.e);
+      const codec = 'avc1.'+[1,2,3].map(i=>desc[i].toString(16).padStart(2,'0')).join('');
+      const sz = tab('stsz'), fixed = u32(sz.s+4), N = u32(sz.s+8), size = i=>fixed || u32(sz.s+12+4*i);
+      const co = tab('stco') || tab('co64'), big = co.t==='co64', nch = u32(co.s+4), chunk = c=>big ? Number(dv.getBigUint64(co.s+8+8*c)) : u32(co.s+8+4*c);
+      const sc = tab('stsc'), nsc = u32(sc.s+4), off = new Array(N); let i = 0;
+      for(let e=0;e<nsc;e++){ const first = u32(sc.s+8+12*e)-1, per = u32(sc.s+12+12*e), last = e+1<nsc ? u32(sc.s+20+12*e)-1 : nch;
+        for(let c=first;c<last && i<N;c++){ let o = chunk(c); for(let k=0;k<per && i<N;k++){ off[i] = o; o += size(i); i++; } } }
+      const pts = new Float64Array(N); { const st = tab('stts'), n = u32(st.s+4); let t = 0; i = 0;
+        for(let e=0;e<n;e++){ const cnt = u32(st.s+8+8*e), d = u32(st.s+12+8*e); for(let k=0;k<cnt && i<N;k++){ pts[i++] = t; t += d; } } }
+      const ct = tab('ctts'); if(ct){ const n = u32(ct.s+4); i = 0; for(let e=0;e<n;e++){ const cnt = u32(ct.s+8+8*e), d = dv.getInt32(ct.s+12+8*e); for(let k=0;k<cnt && i<N;k++) pts[i++] += d; } }
+      const key = new Uint8Array(N), ss = tab('stss'); if(ss){ for(let e=0, n=u32(ss.s+4); e<n; e++) key[u32(ss.s+8+4*e)-1] = 1; } else key.fill(1);
+      const order = [...Array(N).keys()].sort((a,b)=>pts[a]-pts[b]), dOf = new Int32Array(N); order.forEach((d,p)=>dOf[p] = d);
+      const samples = [], keyBefore = new Int32Array(N); let lk = 0;
+      for(let d=0; d<N; d++){ if(key[d]) lk = d; keyBefore[d] = lk; samples.push({data: u8.subarray(off[d], off[d]+size(d)), key: !!key[d], p: 0}); }
+      order.forEach((d,p)=>samples[d].p = p);
+      return {codec, desc, w: dv.getUint16(ent.s+24), h: dv.getUint16(ent.s+26), n: N, samples, dOf, keyBefore};   // samples in decode order; .p = presentation index
+    }
+    throw new Error('mp4: no video track');
+  }));
+}
+
 function Demo(root, groups, opts){
   opts = opts||{};
   let speed = 1, gi = 0, ti = 0, man = null, vi = 0, grid = !!opts.grid, trails = opts.trails!==false, dots = true, occl = !!opts.occluded, playing = true, cells = [], token = 0, v3 = null;
@@ -281,7 +317,13 @@ function Demo(root, groups, opts){
   // otherwise (or after a seek) from currentTime, which is the frame drawImage() shows.
   const HAS_RVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
   function frameAt(t, exact){ const f = exact ? Math.round(t*man.fps) : Math.floor(t*man.fps+1e-3); return Math.max(0, Math.min(man.frames-1, f)); }
-  function fidx(c){ return c.f>=0 ? c.f : frameAt(c.video.currentTime, false); }
+  // Firefox: mediaTime keeps growing after a loop (no wrap to 0) and the first callback after a seek can report the old position
+  function rvfcFrame(v, t){
+    const D = v.duration;
+    if(D>0 && isFinite(D)){ t %= D; let d = t-v.currentTime; if(Math.abs(d)>D/2) d -= Math.sign(d)*D; if(Math.abs(d)>0.25) return frameAt(v.currentTime, false); }
+    return frameAt(t, true);
+  }
+  function fidx(c){ return c.f>=0 ? c.f : (wc ? 0 : frameAt(c.video.currentTime, false)); }
   function keyOf(c){ return ''+trails+dots+occl+'|'+c.cv.width+'x'+c.cv.height; }
   function paint(c, f){
     const v = c.video;
@@ -291,8 +333,67 @@ function Demo(root, groups, opts){
     c.ctx.drawImage(v, 0, 0, c.cv.width, c.cv.height);
     drawCell(c.i, c, f);
   }
+
+  // ---- WebCodecs playback (Chrome 94+, Firefox 130+, Safari 16.4+): we decode the mp4s ourselves and, on one shared clock,
+  // draw decoded frame g and the points of frame g into the same canvas. Exact and smooth; all views stay locked together.
+  // Without VideoDecoder (or if decoding fails) the <video> path above is used.
+  let wc = typeof VideoDecoder==='function' && typeof EncodedVideoChunk==='function' && typeof VideoFrame==='function';
+  let G = 0, lastT = 0, visible = true;                  // G: shared clock in frames since the last seek (keeps counting across loops)
+  const AHEAD = 6;                                       // decoded frames buffered per view
+  const isOn = c=>c.node.classList.contains('on');
+  function wcFree(c){ const w = c.w; c.w = null; c.wInit = null; if(!w) return;
+    try{ if(w.dec.state!=='closed') w.dec.close(); }catch(e){} w.buf.forEach(b=>b.fr.close()); if(w.cur) w.cur.fr.close(); }
+  function wcFail(e){ if(!wc) return; console.warn('WebCodecs playback off:', e); wc = false; const t = fidx(cells[vi]||{f:0})/man.fps; cells.forEach(wcFree); applyLayout(t); }
+  function wcInit(c, my){
+    return c.wInit || (c.wInit = (async ()=>{
+      const tk = await demux(BASE+man.dir+'/'+man.views[c.i].name+'.mp4');
+      const cfg = {codec: tk.codec, description: tk.desc, codedWidth: tk.w, codedHeight: tk.h, optimizeForLatency: true};
+      if(!(await VideoDecoder.isConfigSupported(cfg)).supported) throw new Error('decoder does not support '+tk.codec);
+      if(my!==token || !isOn(c)) return;
+      const w = {tk, cfg, buf: [], cur: null, k: 0, loop: 0, min: 0, pend: 0};
+      w.dec = new VideoDecoder({
+        output: fr=>{ w.pend = Math.max(0, w.pend-1); const g = Math.round(fr.timestamp/1000); if(c.w!==w || g<w.min){ fr.close(); return; } w.buf.push({fr, g}); },
+        error: e=>{ if(c.w===w) wcFail(e); }});
+      w.dec.configure(cfg); c.w = w; wcSeek(c, Math.floor(G));
+    })());
+  }
+  function wcSeek(c, f){                                 // restart decoding at the keyframe before frame f (clock at loop 0)
+    const w = c.w; if(!w) return;
+    try{ w.dec.reset(); w.dec.configure(w.cfg); }catch(e){ return wcFail(e); }
+    w.buf.forEach(b=>b.fr.close()); w.buf = []; if(w.cur){ w.cur.fr.close(); w.cur = null; }
+    f = Math.min(f, w.tk.n-1); w.k = w.tk.keyBefore[w.tk.dOf[f]]; w.loop = 0; w.min = f; w.pend = 0;
+  }
+  function wcGoto(f){                                    // seek every visible view to frame f; free the hidden ones
+    G = f; const my = token;
+    cells.forEach(c=>{ if(!isOn(c)){ wcFree(c); return; } if(c.w) wcSeek(c, f); else wcInit(c, my).catch(wcFail); });
+  }
+  function wcFeed(w){
+    const S = w.tk.samples, n = S.length;
+    while(w.dec.state==='configured' && w.buf.length < AHEAD && w.dec.decodeQueueSize < 2 && w.pend < 24){
+      if(w.k>=n){ w.dec.flush().catch(()=>{}); w.k = 0; w.loop++; }      // loop: drain, then start again at frame 0 (a keyframe)
+      const s = S[w.k++];
+      w.dec.decode(new EncodedVideoChunk({type: s.key ? 'key' : 'delta', timestamp: (w.loop*n + s.p)*1000, data: s.data})); w.pend++;
+    }
+  }
+  function wcPaint(c){
+    const w = c.w; if(!c.cv.width) return;
+    c.g = w.cur.g; c.f = Math.min(man.frames-1, w.cur.g % w.tk.n); c.key = keyOf(c);
+    c.ctx.drawImage(w.cur.fr, 0, 0, c.cv.width, c.cv.height);
+    drawCell(c.i, c, c.f);
+  }
+  function wcTick(now){
+    const dt = lastT ? Math.min(100, now-lastT) : 0; lastT = now;
+    const on = cells.filter(isOn); if(!on.length || on.some(c=>!c.w)) return;              // still loading
+    if(playing) G += dt/1000*man.fps*rateNow();
+    const g = Math.floor(G);
+    // advance only when every view has decoded frame g, so the views never drift apart; otherwise wait (buffering)
+    const ready = on.every(c=>{ const w = c.w; return (w.cur && w.cur.g>=g) || w.buf.some(b=>b.g>=g); });
+    if(ready) on.forEach(c=>{ const w = c.w; while(w.buf.length && w.buf[0].g<=g){ if(w.cur) w.cur.fr.close(); w.cur = w.buf.shift(); } });
+    else G = Math.min(G, g);
+    on.forEach(c=>{ wcFeed(c.w); if(c.w.cur && (c.w.cur.g!==c.g || keyOf(c)!==c.key)) wcPaint(c); });
+  }
   function setView(i, g){
-    const t = master() ? master().currentTime : 0;
+    const t = wc ? fidx(cells[vi])/man.fps : (master() ? master().currentTime : 0);
     vi = i; grid = g; applyLayout(t); drawControls(); snap3(i);
   }
   function rateNow(){ const tr = groups[gi].trials[ti]; return (tr.rate||1)*speed; }
@@ -303,6 +404,7 @@ function Demo(root, groups, opts){
       const on = grid || i===vi;
       c.node.classList.toggle('on', on);
       { const mm = /^view_?0*(\d+)$/i.exec(man.views[i].name); c.node.querySelector('.tagv').textContent = 'VIEW '+((opts.realNames && mm) ? mm[1] : (i+1)); }
+      if(wc) return;
       if(on){
         if(!c.video.src) c.video.src = BASE+man.dir+'/'+man.views[i].name+'.mp4';
         const seek = ()=>{ try{ c.video.currentTime = t; }catch(e){} };
@@ -311,10 +413,11 @@ function Demo(root, groups, opts){
       } else { c.video.pause(); }
     });
     applyRate(); resize();
+    if(wc) wcGoto(Math.min(man.frames-1, Math.floor(t*man.fps+1e-3)));
   }
   async function open(){
     const my = ++token;
-    cells.forEach(c=>{c.video.pause(); c.video.removeAttribute('src'); c.video.load();});
+    cells.forEach(c=>{wcFree(c); c.video.pause(); c.video.removeAttribute('src'); c.video.load();}); G = 0;
     stage.innerHTML = ''; cells = [];
     const ld = el('div','loading','loading…'); stage.append(ld);
     const tr = groups[gi].trials[ti];
@@ -331,7 +434,7 @@ function Demo(root, groups, opts){
       const cell = {node, video, cv, ctx: cv.getContext('2d'), i, f: -1, key: ''};
       video.addEventListener('seeked', ()=>{ if(my===token) paint(cell); });
       video.addEventListener('loadeddata', ()=>{ if(my===token) paint(cell); });
-      if(HAS_RVFC){ const cb = (now, md)=>{ if(my!==token) return; paint(cell, frameAt(md.mediaTime, true)); video.requestVideoFrameCallback(cb); }; video.requestVideoFrameCallback(cb); }
+      if(HAS_RVFC){ const cb = (now, md)=>{ if(my!==token) return; paint(cell, rvfcFrame(video, md.mediaTime)); video.requestVideoFrameCallback(cb); }; video.requestVideoFrameCallback(cb); }
       cells.push(cell);
     });
     bOc.style.display = man.occ ? '' : 'none';
@@ -480,8 +583,14 @@ function Demo(root, groups, opts){
     ctx.globalAlpha = 1;
     if(window.__ttDraw) window.__ttDraw(ctx, f, W, H);      // test hook
   }
-  function frame(){
-    if(man && cells.length){
+  function frame(now){
+    if(wc && man && cells.length){
+      if(visible) wcTick(now); else lastT = 0;
+      const f = fidx(cells[vi]);
+      if(v3) draw3d(f);
+      if(!scrub.matches(':active')) scrub.value = 1000*f/man.frames; time.textContent = (f+1)+' / '+man.frames;
+    }
+    else if(man && cells.length){
       const mv = master();
       if(mv){
         const T = man.frames;
@@ -492,8 +601,7 @@ function Demo(root, groups, opts){
             if(c.video.paused) c.video.play().catch(()=>{});
             let d = c.video.currentTime-mv.currentTime;
             if(D && Math.abs(d)>D/2) d -= Math.sign(d)*D;      // one of them already looped
-            if(!c.video.seeking && now-(c.lastSync||0)>1000 && Math.abs(d)>0.5){ c.lastSync = now; try{c.video.currentTime = mv.currentTime;}catch(e){} }
-            else c.video.playbackRate = rateNow()*(1-Math.max(-.1, Math.min(.1, d)));      // small drift: nudge the rate, no seek
+            if(!c.video.seeking && now-(c.lastSync||0)>1000 && Math.abs(d)>0.25){ c.lastSync = now; try{c.video.currentTime = mv.currentTime;}catch(e){} }
           }
           if(!HAS_RVFC && !c.video.paused) paint(c);                              // fallback: paint every animation frame
           else if(keyOf(c)!==c.key && (c.video.paused || !HAS_RVFC)) paint(c, c.f>=0 ? c.f : null);   // paused: repaint on resize / setting change
@@ -504,13 +612,13 @@ function Demo(root, groups, opts){
     }
     requestAnimationFrame(frame);
   }
-  play.onclick = ()=>{ playing = !playing; play.innerHTML = playing?'&#10074;&#10074;':'&#9654;'; cells.forEach((c,i)=>{ if(!c.node.classList.contains('on')) return; playing? c.video.play().catch(()=>{}) : c.video.pause(); }); };
-  scrub.oninput = ()=>{ const mv = master(); if(!mv||!mv.duration) return; const t = mv.duration*scrub.value/1000; cells.forEach(c=>{ if(c.node.classList.contains('on')) try{c.video.currentTime=t;}catch(e){} }); };
+  play.onclick = ()=>{ playing = !playing; play.innerHTML = playing?'&#10074;&#10074;':'&#9654;'; if(wc) return; cells.forEach((c,i)=>{ if(!c.node.classList.contains('on')) return; playing? c.video.play().catch(()=>{}) : c.video.pause(); }); };
+  scrub.oninput = ()=>{ if(wc){ if(man) wcGoto(Math.min(man.frames-1, Math.floor(man.frames*scrub.value/1000))); return; } const mv = master(); if(!mv||!mv.duration) return; const t = mv.duration*scrub.value/1000; cells.forEach(c=>{ if(c.node.classList.contains('on')) try{c.video.currentTime=t;}catch(e){} }); };
   bTr.onclick = ()=>{ trails=!trails; bTr.setAttribute('aria-pressed',trails); };
   bDt.onclick = ()=>{ dots=!dots; bDt.setAttribute('aria-pressed',dots); };
   bOc.onclick = ()=>{ occl=!occl; bOc.setAttribute('aria-pressed',occl); };
   // only run clips that are on screen
-  new IntersectionObserver(es=>{ es.forEach(e=>{ cells.forEach(c=>{ if(!c.node.classList.contains('on')) return; if(e.isIntersecting && playing) c.video.play().catch(()=>{}); else if(!e.isIntersecting) c.video.pause(); }); }); },{threshold:0.1}).observe(demo);
+  new IntersectionObserver(es=>{ es.forEach(e=>{ visible = e.isIntersecting; if(wc) return; cells.forEach(c=>{ if(!c.node.classList.contains('on')) return; if(e.isIntersecting && playing) c.video.play().catch(()=>{}); else if(!e.isIntersecting) c.video.pause(); }); }); },{threshold:0.1}).observe(demo);
   open(); frame();
 }
 
