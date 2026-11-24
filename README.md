@@ -1,5 +1,7 @@
 # Tracktail
 
+[Paper (arXiv)](https://arxiv.org/abs/2611.26779) | [HF Paper](https://huggingface.co/papers/2611.26779) | [Project page](https://ai-hhmi.github.io/tracktail/) | [Code](https://github.com/AI-HHMI/tracktail) | [Data](https://huggingface.co/collections/ai-hhmi/tracktail-6b05c0eb57a787697c103faf)
+
 **Multi-view 3D point tracking without depth input.** You give Tracktail synchronized videos from
 calibrated cameras and a set of 3D query points. It returns each point's 3D trajectory and
 visibility over time.
@@ -153,4 +155,15 @@ cluster/             LSF launch scripts
 ```
 
 ## Citation
-<!-- TODO: BibTeX once public -->
+
+If you use Tracktail, please cite:
+
+```bibtex
+@article{rupp2026tracktail,
+  title   = {Tracktail: Multi-View 3D Point Tracking without Depth Input},
+  author  = {Rupp, Katie L. and Wong, Jonathan and Seshamani, Sharmishtaa and Vicente, Ana Mafalda and Karashchuk, Lili},
+  journal = {arXiv preprint arXiv:2611.26779},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2611.26779}
+}
+```
