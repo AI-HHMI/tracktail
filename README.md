@@ -3,7 +3,9 @@
 This is the `paper` branch of [Tracktail](https://github.com/AI-HHMI/tracktail). It contains everything
 needed to reproduce the results in the Tracktail paper: the exact training configs, the evaluation
 scripts, and the setup for the baseline methods we compare against.
-<!-- TODO: paper title + arXiv link -->
+Paper: *Tracktail: Multi-View 3D Point Tracking without Depth Input* ([arXiv:2611.26779](https://arxiv.org/abs/2611.26779)).
+
+[Paper (arXiv)](https://arxiv.org/abs/2611.26779) | [HF Paper](https://huggingface.co/papers/2611.26779) | [Project page](https://ai-hhmi.github.io/tracktail/) | [Code](https://github.com/AI-HHMI/tracktail) | [Data](https://huggingface.co/collections/ai-hhmi/tracktail-6b05c0eb57a787697c103faf)
 
 If you just want to *use* Tracktail on your own videos, go to the
 [`main` branch](https://github.com/AI-HHMI/tracktail) instead.
@@ -341,4 +343,14 @@ The code is in `tracktail/model/eval_metrics_paper.py`. Some details are not spe
 
 ## Citation
 
-<!-- TODO: BibTeX once public -->
+If you use Tracktail, please cite:
+
+```bibtex
+@article{rupp2026tracktail,
+  title   = {Tracktail: Multi-View 3D Point Tracking without Depth Input},
+  author  = {Rupp, Katie L. and Wong, Jonathan and Seshamani, Sharmishtaa and Vicente, Ana Mafalda and Karashchuk, Lili},
+  journal = {arXiv preprint arXiv:2611.26779},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2611.26779}
+}
+```

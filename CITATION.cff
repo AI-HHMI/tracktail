@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use Tracktail, please cite the paper below."
+title: "Tracktail"
+url: "https://ai-hhmi.github.io/tracktail/"
+repository-code: "https://github.com/AI-HHMI/tracktail"
+license: BSD-3-Clause
+authors:
+  - family-names: Rupp
+    given-names: Katie L.
+  - family-names: Wong
+    given-names: Jonathan
+  - family-names: Seshamani
+    given-names: Sharmishtaa
+  - family-names: Vicente
+    given-names: Ana Mafalda
+  - family-names: Karashchuk
+    given-names: Lili
+preferred-citation:
+  type: article
+  title: "Tracktail: Multi-View 3D Point Tracking without Depth Input"
+  authors:
+    - family-names: Rupp
+      given-names: Katie L.
+    - family-names: Wong
+      given-names: Jonathan
+    - family-names: Seshamani
+      given-names: Sharmishtaa
+    - family-names: Vicente
+      given-names: Ana Mafalda
+    - family-names: Karashchuk
+      given-names: Lili
+  journal: "arXiv preprint arXiv:2611.26779"
+  year: 2026
+  doi: "10.48550/arXiv.2611.26779"
+  url: "https://arxiv.org/abs/2611.26779"
